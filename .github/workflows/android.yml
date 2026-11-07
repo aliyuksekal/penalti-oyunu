@@ -83,7 +83,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -e
+          set -eo pipefail
           mkdir -p /tmp/mixamo build/preview assets/models
           gh release download v1 --repo "$GITHUB_REPOSITORY" --dir /tmp/mixamo --pattern "*.zip"
           (cd /tmp/mixamo && for z in *.zip; do unzip -o -q "$z"; done && ls | head -80)
@@ -91,6 +91,7 @@ jobs:
           blender --version | head -1
           blender -b --factory-startup -P tools/mixamo_to_glb.py -- /tmp/mixamo assets/models/remy.glb build/remy_info.json build/preview 2>&1 | grep -vE "^Fra:|Sample|Rendering" | tail -60
           ls -la assets/models build/preview
+          test -s assets/models/remy.glb || { echo "::error::remy.glb üretilemedi"; exit 1; }
 
       - name: Android derleme şablonu + R8
         run: |
