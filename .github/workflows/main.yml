@@ -22,7 +22,6 @@ jobs:
           for z in *.zip; do
             if [ -f "$z" ]; then unzip -o "$z"; rm "$z"; fi
           done
-          ls -la
 
       - name: 2. Blender Kur ve Mixamo FBX Dosyalarini GLB'ye Donustur
         run: |
@@ -48,9 +47,6 @@ jobs:
 
           fbx_files = glob.glob("mixamo_raw/**/*.fbx", recursive=True) + glob.glob("mixamo_raw/*.fbx")
           fbx_files = list(set(fbx_files))
-          print("Bulunan FBX dosyalari:", fbx_files)
-
-          # En buyuk boyutlu FBX dosyasi karakterdir (Remy.fbx)
           char_fbx = max(fbx_files, key=os.path.getsize)
           anim_fbxs = [f for f in fbx_files if f != char_fbx]
 
@@ -69,7 +65,6 @@ jobs:
               if not arm_obj:
                   return
 
-              # Boy olcekleme (1.80m veya 1.88m) ve +Z yonune bakma
               bpy.context.view_layer.objects.active = arm_obj
               bpy.ops.object.mode_set(mode='OBJECT')
               arm_obj.scale = (1.0, 1.0, 1.0)
@@ -82,7 +77,6 @@ jobs:
               arm_obj.scale = (s_factor, s_factor, s_factor)
               bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 
-              # Istenen PBR Materyal Slotlarini Ata (Duz Beyaz Forma/Sort/Corap)
               req_mats = [
                   make_mat("Skin", (0.85, 0.65, 0.52, 1.0), 0.6),
                   make_mat("Hair", (0.12, 0.09, 0.07, 1.0), 0.75),
@@ -95,12 +89,11 @@ jobs:
               if is_keeper:
                   req_mats.append(make_mat("Gloves", (0.95, 0.95, 0.95, 1.0), 0.7))
 
-              for idx, m_obj in enumerate(meshes):
+              for m_obj in meshes:
                   m_obj.data.materials.clear()
                   for rm in req_mats:
                       m_obj.data.materials.append(rm)
 
-              # Animasyonlari Yukle ve Istenen Isimlerle NLA'ya Gom (In-Place / Root Motion Yok)
               bpy.context.scene.render.fps = 30
               if not arm_obj.animation_data:
                   arm_obj.animation_data_create()
@@ -132,7 +125,6 @@ jobs:
                   matched_act.name = target_name
                   matched_act.use_fake_user = True
 
-                  # Root Motion Sifirla (In-Place)
                   for fc in matched_act.fcurves:
                       if "Hips" in fc.data_path and "location" in fc.data_path and fc.array_index in (0, 2):
                           for kp in fc.keyframe_points:
@@ -172,7 +164,6 @@ jobs:
           }
           build_character("project/kaleci.glb", 1.88, True, kaleci_map)
 
-          # Futbol Topu (0.22m Cap)
           clear_scene()
           bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4, radius=0.11, location=(0, 0, 0.11))
           ball = bpy.context.active_object
@@ -286,17 +277,32 @@ jobs:
           name="Android"
           platform="Android"
           runnable=true
+          dedicated_server=false
+          custom_features=""
           export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
           export_path="../build/penalti_ustasi.apk"
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          encrypt_pck=false
+          encrypt_directory=false
+
           [preset.0.options]
+          custom_template/debug=""
+          custom_template/release=""
           gradle_build/use_gradle_build=false
           architectures/arm64-v8a=true
+          architectures/armeabi-v7a=false
           package/unique_name="com.aliyuksekal.penaltiustasi"
           package/name="Penalti Ustasi"
           package/signed=true
           keystore/debug="../debug.keystore"
           keystore/debug_user="androiddebugkey"
           keystore/debug_password="android"
+          keystore/release="../debug.keystore"
+          keystore/release_user="androiddebugkey"
+          keystore/release_password="android"
           EOF
 
       - name: 4. Imza Anahtari (Keystore) ve Java 17 Kur
@@ -305,20 +311,22 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Keystore Olustur
+      - name: 5. Godot 4 İndir, Import Et ve Doğrudan APK Derle
         run: |
           keytool -keyalg RSA -genkeypair -alias androiddebugkey \
             -keypass android -keystore debug.keystore -storepass android \
             -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
 
-      - name: 5. Godot 4 ile APK Derle
-        uses: firebelley/godot-export@v5.2.0
-        with:
-          godot_executable_download_url: https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
-          godot_export_templates_download_url: https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
-          relative_project_path: ./project
-          preset_name: "Android"
-          archive_output: false
+          wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
+          wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
+          unzip -q Godot_v4.3-stable_linux.x86_64.zip
+          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
+          unzip -q Godot_v4.3-stable_export_templates.tpz
+          mv templates/* ~/.local/share/godot/export_templates/4.3.stable/
+
+          chmod +x Godot_v4.3-stable_linux.x86_64
+          ./Godot_v4.3-stable_linux.x86_64 --headless --path project --import
+          ./Godot_v4.3-stable_linux.x86_64 --headless --path project --export-debug "Android" ../build/penalti_ustasi.apk
 
       - name: 6. Hazir APK ve GLB Indirme Linklerini Yayinla
         uses: softprops/action-gh-release@v2
