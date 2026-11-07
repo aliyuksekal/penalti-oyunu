@@ -45,7 +45,10 @@ func _match_shots(prefix: String) -> void:
 	game.skill = 0.0
 	game.rng.seed = 3
 	game.on_shot(Vector2(-3.1, 2.05), 0.95, -0.4)
-	await get_tree().create_timer(0.95).timeout
+	await get_tree().create_timer(0.62).timeout
+	if prefix == "tr":
+		await _shot("dev_kick.png", 1)
+	await get_tree().create_timer(0.25).timeout
 	await _shot(prefix + "_03_goal.png", 2)
 	await get_tree().create_timer(1.6).timeout
 	await _shot(prefix + "_04_celebration.png", 2)
@@ -55,7 +58,12 @@ func _match_shots(prefix: String) -> void:
 	await get_tree().create_timer(0.6).timeout
 	await _shot(prefix + "_05_keeper.png", 4)
 	game.on_dive(Vector2(-2.5, 1.2))
-	await get_tree().create_timer(1.5).timeout
+	if prefix == "tr":
+		await get_tree().create_timer(0.35).timeout
+		await _shot("dev_dive_mid.png", 1)
+		await get_tree().create_timer(1.1).timeout
+	else:
+		await get_tree().create_timer(1.5).timeout
 	await _shot(prefix + "_06_dive.png", 2)
 	game.stop()
 	# sonuç ekranı (örnek veri)

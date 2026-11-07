@@ -26,6 +26,14 @@ func _run() -> void:
 	print("=== SELFTEST ===")
 	check(I18n.missing_report().is_empty(), "çeviriler tam: %s" % str(I18n.missing_report()))
 	check(Assets.missing.is_empty(), "ikonlar tam: %s" % str(Assets.missing))
+	# gerçek karakter (Mixamo)
+	var w = main.world
+	if ResourceLoader.exists("res://assets/models/remy.glb"):
+		check(w.shooter.has_method("dive_to"), "Mixamo karakteri kullanılıyor")
+		check(w.shooter.ap != null and w.shooter.ap.get_animation_list().size() >= 20, "animasyonlar yüklendi: %d" % (w.shooter.ap.get_animation_list().size() if w.shooter.ap else 0))
+		check(w.shooter.bone("Hips") >= 0 and w.shooter.bone("RightHand") >= 0, "Mixamo kemikleri bulundu")
+		check(w.keeper._mats.has("top"), "forma ağı (tişört) boyanabiliyor")
+		print("  bilgi: ", w.keeper._info.get("gk_dive", {}), " / ", w.keeper._info.get("gk_dive2", {}), " / kick ", w.shooter._info.get("penalty_kick", {}))
 	# yapay zekâ öğrenmesi
 	Save.reset_ai()
 	var b := Brain.new()

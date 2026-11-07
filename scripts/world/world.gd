@@ -4,13 +4,14 @@ extends Node3D
 
 const Stadium = preload("res://scripts/world/stadium.gd")
 const PlayerModel = preload("res://scripts/world/player_model.gd")
+const MixamoModel = preload("res://scripts/world/mixamo_model.gd")
 const Ball = preload("res://scripts/world/ball.gd")
 
 const SPOT := Vector3(0, 0.11, 11.0)
 
 var stadium: Stadium
-var shooter: PlayerModel
-var keeper: PlayerModel
+var shooter   # MixamoModel (gerçek karakter) ya da PlayerModel (yedek)
+var keeper
 var ball: Ball
 var camera: Camera3D
 var confetti: CPUParticles3D
@@ -27,9 +28,13 @@ var rival_kit: String = "yellow_navy"
 func _ready() -> void:
 	stadium = Stadium.new()
 	add_child(stadium)
-	shooter = PlayerModel.new(false, Color("c4875f"), Color("1e140c"))
+	if MixamoModel.available():
+		shooter = MixamoModel.new(false)
+		keeper = MixamoModel.new(true)
+	else:
+		shooter = PlayerModel.new(false, Color("c4875f"), Color("1e140c"))
+		keeper = PlayerModel.new(true, Color("b27650"), Color("121010"))
 	add_child(shooter)
-	keeper = PlayerModel.new(true, Color("b27650"), Color("121010"))
 	add_child(keeper)
 	ball = Ball.new()
 	add_child(ball)
@@ -220,6 +225,9 @@ func dive(d: Vector2, dur: float) -> void:
 		lift = clampf(d.y - 1.6, 0.0, 0.6)
 		ang = 0.0
 	keeper.dive_dir = Vector2(signf(d.x) if absf(d.x) > 0.9 else 0.0, clampf((d.y - 0.6) / 1.4, 0.0, 1.0))
+	if keeper.has_method("dive_to"):
+		await keeper.dive_to(d, dur).finished
+		return
 	keeper.set_state("dive")
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(keeper, "position", Vector3(feet_x, lift, 0.35), dur).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
