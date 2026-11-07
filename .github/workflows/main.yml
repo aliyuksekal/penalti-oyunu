@@ -140,7 +140,7 @@ jobs:
 
                   track = arm_obj.animation_data.nla_tracks.new()
                   track.name = target_name
-                   strip_start = int(matched_act.frame_range[0]) if matched_act.frame_range else 1
+                  strip_start = int(matched_act.frame_range[0]) if matched_act.frame_range else 1
                   track.strips.new(target_name, max(1, strip_start), matched_act)
 
               out_abs = os.path.abspath(out_path)
@@ -183,6 +183,7 @@ jobs:
           bpy.ops.export_scene.gltf(filepath=os.path.abspath("project/top.glb"), export_format='GLB', export_yup=True)
           EOF
 
+          sed -i 's/^          //' convert_mixamo.py
           blender -b -P convert_mixamo.py
           ls -lh project/*.glb
 
@@ -288,13 +289,17 @@ jobs:
           transform = Transform3D(1, 0, 0, 0, 0.94, 0.34, 0, -0.34, 0.94, 0, 2.2, 4.2)
           EOF
 
+          sed -i 's/^          //' project/project.godot
+          sed -i 's/^          //' project/Main.gd
+          sed -i 's/^          //' project/Main.tscn
+
       - name: 4. Java 17 Kur
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 5. Godot 4 İndir ve Doğrudan APK Derle
+      - name: 5. Godot 4 Indir ve Dogrudan APK Derle
         run: |
           keytool -keyalg RSA -genkeypair -alias androiddebugkey \
             -keypass android -keystore "$PWD/debug.keystore" -storepass android \
@@ -333,6 +338,8 @@ jobs:
           keystore/release_password="android"
           EOF
 
+          sed -i 's/^          //' project/export_presets.cfg
+
           mkdir -p ~/.config/godot
           cat << EOF > ~/.config/godot/editor_settings-4.tres
           [gd_resource type="EditorSettings" format=3]
@@ -342,6 +349,8 @@ jobs:
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           EOF
+
+          sed -i 's/^          //' ~/.config/godot/editor_settings-4.tres
 
           wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
           wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
