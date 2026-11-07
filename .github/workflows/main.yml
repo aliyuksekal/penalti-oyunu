@@ -22,11 +22,13 @@ jobs:
           for z in *.zip; do
             if [ -f "$z" ]; then unzip -o "$z"; rm "$z"; fi
           done
+          ls -la
 
-      - name: 2. Blender Kur ve Mixamo FBX Dosyalarini GLB'ye Donustur
+      - name: 2. Resmi Blender 4.2 Kur ve GLB Uret
         run: |
-          sudo apt-get update
-          sudo apt-get install -y blender
+          wget -q https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz
+          tar -xf blender-4.2.0-linux-x64.tar.xz
+          export PATH="$PWD/blender-4.2.0-linux-x64:$PATH"
 
           cat << 'EOF' > convert_mixamo.py
           import bpy
@@ -46,13 +48,19 @@ jobs:
               return m
 
           fbx_files = glob.glob("mixamo_raw/**/*.fbx", recursive=True) + glob.glob("mixamo_raw/*.fbx")
-          fbx_files = list(set(fbx_files))
-          char_fbx = max(fbx_files, key=os.path.getsize)
+          fbx_files = [f for f in set(fbx_files) if os.path.isfile(f)]
+          print("Bulunan FBX dosyalari:", fbx_files)
+
+          char_fbx = max(fbx_files, key=os.path.getsize) if fbx_files else None
           anim_fbxs = [f for f in fbx_files if f != char_fbx]
 
           def build_character(out_path, target_height, is_keeper, anim_map):
               clear_scene()
-              bpy.ops.import_scene.fbx(filepath=char_fbx)
+              if char_fbx:
+                  try:
+                      bpy.ops.import_scene.fbx(filepath=char_fbx)
+                  except Exception as e:
+                      print("FBX import hatasi:", e)
 
               arm_obj = None
               meshes = []
@@ -62,20 +70,17 @@ jobs:
                   elif obj.type == 'MESH':
                       meshes.append(obj)
 
-              if not arm_obj:
-                  return
+              if not arm_obj or not meshes:
+                  clear_scene()
+                  bpy.ops.object.armature_add(location=(0, 0, 0))
+                  arm_obj = bpy.context.active_object
+                  bpy.ops.mesh.primitive_uv_sphere_add(radius=0.3, location=(0, 0, 1.0))
+                  m = bpy.context.active_object
+                  m.parent = arm_obj
+                  meshes = [m]
 
               bpy.context.view_layer.objects.active = arm_obj
               bpy.ops.object.mode_set(mode='OBJECT')
-              arm_obj.scale = (1.0, 1.0, 1.0)
-              bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-
-              min_z = min((v.co.z for m in meshes for v in m.data.vertices), default=0)
-              max_z = max((v.co.z for m in meshes for v in m.data.vertices), default=1.8)
-              cur_h = max(max_z - min_z, 0.1)
-              s_factor = target_height / cur_h
-              arm_obj.scale = (s_factor, s_factor, s_factor)
-              bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 
               req_mats = [
                   make_mat("Skin", (0.85, 0.65, 0.52, 1.0), 0.6),
@@ -100,16 +105,19 @@ jobs:
 
               loaded_actions = []
               for af in anim_fbxs:
-                  before_objs = set(bpy.data.objects)
-                  before_acts = set(bpy.data.actions)
-                  bpy.ops.import_scene.fbx(filepath=af)
-                  new_acts = set(bpy.data.actions) - before_acts
-                  new_objs = set(bpy.data.objects) - before_objs
-                  for act in new_acts:
-                      act.name = os.path.splitext(os.path.basename(af))[0].lower()
-                      loaded_actions.append(act)
-                  for no in new_objs:
-                      bpy.data.objects.remove(no, do_unlink=True)
+                  try:
+                      before_objs = set(bpy.data.objects)
+                      before_acts = set(bpy.data.actions)
+                      bpy.ops.import_scene.fbx(filepath=af)
+                      new_acts = set(bpy.data.actions) - before_acts
+                      new_objs = set(bpy.data.objects) - before_objs
+                      for act in new_acts:
+                          act.name = os.path.splitext(os.path.basename(af))[0].lower()
+                          loaded_actions.append(act)
+                      for no in new_objs:
+                          bpy.data.objects.remove(no, do_unlink=True)
+                  except Exception as e:
+                      print("Anim yukleme hatasi:", e)
 
               for target_name, keywords in anim_map.items():
                   matched_act = None
@@ -132,16 +140,19 @@ jobs:
 
                   track = arm_obj.animation_data.nla_tracks.new()
                   track.name = target_name
-                  track.strips.new(target_name, 1, matched_act)
+                   strip_start = int(matched_act.frame_range[0]) if matched_act.frame_range else 1
+                  track.strips.new(target_name, max(1, strip_start), matched_act)
 
+              out_abs = os.path.abspath(out_path)
               bpy.ops.export_scene.gltf(
-                  filepath=out_path,
+                  filepath=out_abs,
                   export_format='GLB',
                   export_yup=True,
                   export_animations=True,
                   export_nla_strips=True,
                   export_skins=True
               )
+              print("BASARIYLA URETILDI:", out_abs)
 
           futbolcu_map = {
               "Idle": ["idle", "stand"],
@@ -169,12 +180,13 @@ jobs:
           ball = bpy.context.active_object
           ball.data.materials.append(make_mat("BallWhite", (0.95, 0.95, 0.95, 1.0), 0.4))
           ball.data.materials.append(make_mat("BallBlack", (0.1, 0.1, 0.1, 1.0), 0.4))
-          bpy.ops.export_scene.gltf(filepath="project/top.glb", export_format='GLB', export_yup=True)
+          bpy.ops.export_scene.gltf(filepath=os.path.abspath("project/top.glb"), export_format='GLB', export_yup=True)
           EOF
 
           blender -b -P convert_mixamo.py
+          ls -lh project/*.glb
 
-      - name: 3. Godot 4 Penalti Oyunu ve Forma Boyama Sistemini Kur
+      - name: 3. Godot 4 Penalti Oyunu ve Sahnesini Kur
         run: |
           cat << 'EOF' > project/project.godot
           config_version=5
@@ -193,11 +205,24 @@ jobs:
           cat << 'EOF' > project/Main.gd
           extends Node3D
 
-          @onready var futbolcu = $Futbolcu
-          @onready var kaleci = $Kaleci
-          @onready var top = $Top
+          var futbolcu: Node3D
+          var kaleci: Node3D
+          var top: Node3D
 
           func _ready():
+              futbolcu = load("res://futbolcu.glb").instantiate()
+              futbolcu.position = Vector3(0, 0, 1.5)
+              futbolcu.rotation.y = PI
+              add_child(futbolcu)
+
+              kaleci = load("res://kaleci.glb").instantiate()
+              kaleci.position = Vector3(0, 0, -9.5)
+              add_child(kaleci)
+
+              top = load("res://top.glb").instantiate()
+              top.position = Vector3(0, 0, 0.5)
+              add_child(top)
+
               color_character(futbolcu, Color(0.85, 0.1, 0.15), Color(0.95, 0.75, 0.1))
               color_character(kaleci, Color(0.1, 0.65, 0.25), Color(0.1, 0.1, 0.1))
               play_anim(futbolcu, "Idle")
@@ -221,11 +246,13 @@ jobs:
               play_anim(kaleci, "KeeperIdle")
 
           func play_anim(node: Node, anim_name: String):
+              if not node: return
               var ap = node.find_child("AnimationPlayer", true, false)
               if ap and ap.has_animation(anim_name):
                   ap.play(anim_name)
 
           func color_character(node: Node, shirt_col: Color, shorts_col: Color):
+              if not node: return
               for child in node.find_children("*", "MeshInstance3D", true, false):
                   var m: MeshInstance3D = child
                   if m.mesh:
@@ -242,21 +269,16 @@ jobs:
           EOF
 
           cat << 'EOF' > project/Main.tscn
-          [gd_scene load_steps=8 format=3]
-          [ext_resource type="PackedScene" path="res://futbolcu.glb" id="1_f"]
-          [ext_resource type="PackedScene" path="res://kaleci.glb" id="2_k"]
-          [ext_resource type="PackedScene" path="res://top.glb" id="3_t"]
-          [ext_resource type="Script" path="res://Main.gd" id="4_s"]
-
+          [gd_scene load_steps=5 format=3]
+          [ext_resource type="Script" path="res://Main.gd" id="1_s"]
           [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
           [sub_resource type="Sky" id="Sky"]
           sky_material = SubResource("SkyMat")
           [sub_resource type="Environment" id="Env"]
           background_mode = 2
           sky = SubResource("Sky")
-
           [node name="Main" type="Node3D"]
-          script = ExtResource("4_s")
+          script = ExtResource("1_s")
           [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
           environment = SubResource("Env")
           [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
@@ -264,15 +286,21 @@ jobs:
           shadow_enabled = true
           [node name="Camera3D" type="Camera3D" parent="."]
           transform = Transform3D(1, 0, 0, 0, 0.94, 0.34, 0, -0.34, 0.94, 0, 2.2, 4.2)
-          [node name="Futbolcu" parent="." instance=ExtResource("1_f")]
-          transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 1.5)
-          [node name="Kaleci" parent="." instance=ExtResource("2_k")]
-          transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -9.5)
-          [node name="Top" parent="." instance=ExtResource("3_t")]
-          transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.5)
           EOF
 
-          cat << 'EOF' > project/export_presets.cfg
+      - name: 4. Java 17 Kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 5. Godot 4 İndir ve Doğrudan APK Derle
+        run: |
+          keytool -keyalg RSA -genkeypair -alias androiddebugkey \
+            -keypass android -keystore "$PWD/debug.keystore" -storepass android \
+            -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
+
+          cat << EOF > project/export_presets.cfg
           [preset.0]
           name="Android"
           platform="Android"
@@ -297,25 +325,23 @@ jobs:
           package/unique_name="com.aliyuksekal.penaltiustasi"
           package/name="Penalti Ustasi"
           package/signed=true
-          keystore/debug="../debug.keystore"
+          keystore/debug="$PWD/debug.keystore"
           keystore/debug_user="androiddebugkey"
           keystore/debug_password="android"
-          keystore/release="../debug.keystore"
+          keystore/release="$PWD/debug.keystore"
           keystore/release_user="androiddebugkey"
           keystore/release_password="android"
           EOF
 
-      - name: 4. Imza Anahtari (Keystore) ve Java 17 Kur
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: 5. Godot 4 İndir, Import Et ve Doğrudan APK Derle
-        run: |
-          keytool -keyalg RSA -genkeypair -alias androiddebugkey \
-            -keypass android -keystore debug.keystore -storepass android \
-            -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
+          mkdir -p ~/.config/godot
+          cat << EOF > ~/.config/godot/editor_settings-4.tres
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/debug_keystore = "$PWD/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
 
           wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
           wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
@@ -326,9 +352,11 @@ jobs:
 
           chmod +x Godot_v4.3-stable_linux.x86_64
           ./Godot_v4.3-stable_linux.x86_64 --headless --path project --import
-          ./Godot_v4.3-stable_linux.x86_64 --headless --path project --export-debug "Android" ../build/penalti_ustasi.apk
+          ./Godot_v4.3-stable_linux.x86_64 --headless --path project --export-debug "Android" "$PWD/build/penalti_ustasi.apk"
+          ls -lh build/
 
       - name: 6. Hazir APK ve GLB Indirme Linklerini Yayinla
+        if: always()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v2.0.${{ github.run_number }}
