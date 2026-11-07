@@ -137,6 +137,11 @@ if PREVIEW:
     scn.render.engine = "CYCLES"
     scn.cycles.samples = 12
     scn.cycles.device = "CPU"
+    scn.cycles.use_denoising = False
+    try:
+        scn.view_layers[0].cycles.denoising_store_passes = False
+    except Exception:
+        pass
     scn.render.resolution_x = 480
     scn.render.resolution_y = 480
     scn.render.film_transparent = False
@@ -159,6 +164,9 @@ if PREVIEW:
         f = act.frame_range[0] + (act.frame_range[1] - act.frame_range[0]) * t
         scn.frame_set(int(f))
         scn.render.filepath = os.path.join(PREVIEW, f"{name}.png")
-        bpy.ops.render.render(write_still=True)
+        try:
+            bpy.ops.render.render(write_still=True)
+        except Exception as e:
+            print("önizleme hatası:", name, e)
     arm.animation_data.action = None
     print("önizlemeler hazır")
