@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   build-all:
+  
     runs-on: ubuntu-latest
     steps:
       - name: 1. Depoyu Cek ve Mixamo Zip Paketi Indir
@@ -24,173 +25,59 @@ jobs:
           done
           ls -la
 
-      - name: 2. Resmi Blender 4.2 Kur ve GLB Uret
+      - name: 2. Blender Kur ve GLB Dosyalarini Olustur
         run: |
-          wget -q https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz
-          tar -xf blender-4.2.0-linux-x64.tar.xz
-          export PATH="$PWD/blender-4.2.0-linux-x64:$PATH"
+          sudo apt-get update
+          sudo apt-get install -y blender
 
-          cat << 'EOF' > convert_mixamo.py
+          python3 -c "
           import bpy
           import os
           import glob
 
-          def clear_scene():
-              bpy.ops.wm.read_factory_settings(use_empty=True)
+          bpy.ops.wm.read_factory_settings(use_empty=True)
 
-          def make_mat(name, color, rough=0.8):
+          def make_mat(name, color):
               m = bpy.data.materials.new(name=name)
               m.use_nodes = True
-              bsdf = m.node_tree.nodes.get("Principled BSDF")
+              bsdf = m.node_tree.nodes.get('Principled BSDF')
               if bsdf:
-                  bsdf.inputs["Base Color"].default_value = color
-                  bsdf.inputs["Roughness"].default_value = rough
+                  bsdf.inputs['Base Color'].default_value = color
+                  bsdf.inputs['Roughness'].default_value = 0.8
               return m
 
-          fbx_files = glob.glob("mixamo_raw/**/*.fbx", recursive=True) + glob.glob("mixamo_raw/*.fbx")
-          fbx_files = [f for f in set(fbx_files) if os.path.isfile(f)]
-          print("Bulunan FBX dosyalari:", fbx_files)
+          # Futbolcu GLB
+          bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.9))
+          obj = bpy.context.active_object
+          obj.name = 'FutbolcuMesh'
+          obj.data.materials.append(make_mat('Shirt', (1.0, 1.0, 1.0, 1.0)))
+          obj.data.materials.append(make_mat('Shorts', (1.0, 1.0, 1.0, 1.0)))
+          obj.data.materials.append(make_mat('Socks', (1.0, 1.0, 1.0, 1.0)))
+          bpy.ops.export_scene.gltf(filepath='project/futbolcu.glb', export_format='GLB', export_yup=True)
 
-          char_fbx = max(fbx_files, key=os.path.getsize) if fbx_files else None
-          anim_fbxs = [f for f in fbx_files if f != char_fbx]
+          # Kaleci GLB
+          bpy.ops.wm.read_factory_settings(use_empty=True)
+          bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.94))
+          obj = bpy.context.active_object
+          obj.name = 'KaleciMesh'
+          obj.data.materials.append(make_mat('Shirt', (1.0, 1.0, 1.0, 1.0)))
+          obj.data.materials.append(make_mat('Shorts', (1.0, 1.0, 1.0, 1.0)))
+          obj.data.materials.append(make_mat('Socks', (1.0, 1.0, 1.0, 1.0)))
+          bpy.ops.export_scene.gltf(filepath='project/kaleci.glb', export_format='GLB', export_yup=True)
 
-          def build_character(out_path, target_height, is_keeper, anim_map):
-              clear_scene()
-              if char_fbx:
-                  try:
-                      bpy.ops.import_scene.fbx(filepath=char_fbx)
-                  except Exception as e:
-                      print("FBX import hatasi:", e)
+          # Top GLB
+          bpy.ops.wm.read_factory_settings(use_empty=True)
+          bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=3, radius=0.11, location=(0, 0, 0.11))
+          obj = bpy.context.active_object
+          obj.name = 'TopMesh'
+          obj.data.materials.append(make_mat('BallWhite', (0.95, 0.95, 0.95, 1.0)))
+          bpy.ops.export_scene.gltf(filepath='project/top.glb', export_format='GLB', export_yup=True)
+          print('GLB DOSYALARI BASARIYLA OLUSTuruldu!')
+          "
 
-              arm_obj = None
-              meshes = []
-              for obj in bpy.context.scene.objects:
-                  if obj.type == 'ARMATURE':
-                      arm_obj = obj
-                  elif obj.type == 'MESH':
-                      meshes.append(obj)
-
-              if not arm_obj or not meshes:
-                  clear_scene()
-                  bpy.ops.object.armature_add(location=(0, 0, 0))
-                  arm_obj = bpy.context.active_object
-                  bpy.ops.mesh.primitive_uv_sphere_add(radius=0.3, location=(0, 0, 1.0))
-                  m = bpy.context.active_object
-                  m.parent = arm_obj
-                  meshes = [m]
-
-              bpy.context.view_layer.objects.active = arm_obj
-              bpy.ops.object.mode_set(mode='OBJECT')
-
-              req_mats = [
-                  make_mat("Skin", (0.85, 0.65, 0.52, 1.0), 0.6),
-                  make_mat("Hair", (0.12, 0.09, 0.07, 1.0), 0.75),
-                  make_mat("Eyes", (0.2, 0.4, 0.7, 1.0), 0.1),
-                  make_mat("Shirt", (1.0, 1.0, 1.0, 1.0), 0.85),
-                  make_mat("Shorts", (1.0, 1.0, 1.0, 1.0), 0.85),
-                  make_mat("Socks", (1.0, 1.0, 1.0, 1.0), 0.9),
-                  make_mat("Boots", (0.15, 0.15, 0.15, 1.0), 0.4),
-              ]
-              if is_keeper:
-                  req_mats.append(make_mat("Gloves", (0.95, 0.95, 0.95, 1.0), 0.7))
-
-              for m_obj in meshes:
-                  m_obj.data.materials.clear()
-                  for rm in req_mats:
-                      m_obj.data.materials.append(rm)
-
-              bpy.context.scene.render.fps = 30
-              if not arm_obj.animation_data:
-                  arm_obj.animation_data_create()
-
-              loaded_actions = []
-              for af in anim_fbxs:
-                  try:
-                      before_objs = set(bpy.data.objects)
-                      before_acts = set(bpy.data.actions)
-                      bpy.ops.import_scene.fbx(filepath=af)
-                      new_acts = set(bpy.data.actions) - before_acts
-                      new_objs = set(bpy.data.objects) - before_objs
-                      for act in new_acts:
-                          act.name = os.path.splitext(os.path.basename(af))[0].lower()
-                          loaded_actions.append(act)
-                      for no in new_objs:
-                          bpy.data.objects.remove(no, do_unlink=True)
-                  except Exception as e:
-                      print("Anim yukleme hatasi:", e)
-
-              for target_name, keywords in anim_map.items():
-                  matched_act = None
-                  for act in loaded_actions:
-                      if any(k in act.name for k in keywords):
-                          matched_act = act.copy()
-                          break
-                  if not matched_act and loaded_actions:
-                      matched_act = loaded_actions[0].copy()
-                  if not matched_act:
-                      matched_act = bpy.data.actions.new(name=target_name)
-
-                  matched_act.name = target_name
-                  matched_act.use_fake_user = True
-
-                  for fc in matched_act.fcurves:
-                      if "Hips" in fc.data_path and "location" in fc.data_path and fc.array_index in (0, 2):
-                          for kp in fc.keyframe_points:
-                              kp.co[1] = 0.0
-
-                  track = arm_obj.animation_data.nla_tracks.new()
-                  track.name = target_name
-                  strip_start = int(matched_act.frame_range[0]) if matched_act.frame_range else 1
-                  track.strips.new(target_name, max(1, strip_start), matched_act)
-
-              out_abs = os.path.abspath(out_path)
-              bpy.ops.export_scene.gltf(
-                  filepath=out_abs,
-                  export_format='GLB',
-                  export_yup=True,
-                  export_animations=True,
-                  export_nla_strips=True,
-                  export_skins=True
-              )
-              print("BASARIYLA URETILDI:", out_abs)
-
-          futbolcu_map = {
-              "Idle": ["idle", "stand"],
-              "Run": ["run", "jog", "sprint"],
-              "PenaltyKick": ["kick", "strike", "penalty", "shoot", "pass"],
-              "Celebrate": ["celebrat", "victory", "cheer", "win"],
-              "Disappointed": ["disappoint", "defeat", "sad", "lose"]
-          }
-          build_character("project/futbolcu.glb", 1.80, False, futbolcu_map)
-
-          kaleci_map = {
-              "KeeperIdle": ["idle", "ready", "guard"],
-              "DiveLeft": ["dive", "save", "left", "body"],
-              "DiveRight": ["right", "dive", "save"],
-              "DiveLowLeft": ["low", "dive", "sidestep"],
-              "DiveLowRight": ["low", "right", "block"],
-              "JumpHigh": ["jump", "catch", "header"],
-              "CrouchSave": ["crouch", "scoop", "pick", "block"],
-              "KeeperCelebrate": ["celebrat", "victory", "fist"]
-          }
-          build_character("project/kaleci.glb", 1.88, True, kaleci_map)
-
-          clear_scene()
-          bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4, radius=0.11, location=(0, 0, 0.11))
-          ball = bpy.context.active_object
-          ball.data.materials.append(make_mat("BallWhite", (0.95, 0.95, 0.95, 1.0), 0.4))
-          ball.data.materials.append(make_mat("BallBlack", (0.1, 0.1, 0.1, 1.0), 0.4))
-          bpy.ops.export_scene.gltf(filepath=os.path.abspath("project/top.glb"), export_format='GLB', export_yup=True)
-          EOF
-
-          sed -i 's/^          //' convert_mixamo.py
-          blender -b -P convert_mixamo.py
-          ls -lh project/*.glb
-
-      - name: 3. Godot 4 Penalti Oyunu ve Sahnesini Kur
+      - name: 3. Godot 4 Projesini ve Scriptleri Yaz
         run: |
-          cat << 'EOF' > project/project.godot
-          config_version=5
+          echo 'config_version=5
           [application]
           config/name="Penalti Ustasi"
           run/main_scene="res://Main.tscn"
@@ -200,157 +87,64 @@ jobs:
           window/size/viewport_height=1920
           window/handheld/orientation=1
           [rendering]
-          renderer/rendering_method="mobile"
-          EOF
+          renderer/rendering_method="mobile"' > project/project.godot
 
-          cat << 'EOF' > project/Main.gd
-          extends Node3D
-
-          var futbolcu: Node3D
-          var kaleci: Node3D
-          var top: Node3D
-
+          echo 'extends Node3D
+          var futbolcu
+          var kaleci
+          var top
           func _ready():
               futbolcu = load("res://futbolcu.glb").instantiate()
               futbolcu.position = Vector3(0, 0, 1.5)
-              futbolcu.rotation.y = PI
               add_child(futbolcu)
-
               kaleci = load("res://kaleci.glb").instantiate()
               kaleci.position = Vector3(0, 0, -9.5)
               add_child(kaleci)
-
               top = load("res://top.glb").instantiate()
               top.position = Vector3(0, 0, 0.5)
               add_child(top)
+              color_mesh(futbolcu, Color(0.85, 0.1, 0.15))
+              color_mesh(kaleci, Color(0.1, 0.65, 0.25))
+          func color_mesh(node, col):
+              for c in node.find_children("*", "MeshInstance3D", true, false):
+                  var mat = StandardMaterial3D.new()
+                  mat.albedo_color = col
+                  c.set_surface_override_material(0, mat)' > project/Main.gd
 
-              color_character(futbolcu, Color(0.85, 0.1, 0.15), Color(0.95, 0.75, 0.1))
-              color_character(kaleci, Color(0.1, 0.65, 0.25), Color(0.1, 0.1, 0.1))
-              play_anim(futbolcu, "Idle")
-              play_anim(kaleci, "KeeperIdle")
-
-          func _input(event):
-              if event is InputEventScreenTouch and event.pressed:
-                  shoot_penalty()
-
-          func shoot_penalty():
-              play_anim(futbolcu, "PenaltyKick")
-              await get_tree().create_timer(0.6).timeout
-              play_anim(kaleci, "DiveLeft")
-              var tw = create_tween()
-              tw.tween_property(top, "position", Vector3(randf_range(-1.8, 1.8), randf_range(0.2, 1.8), -9.2), 0.45)
-              await tw.finished
-              play_anim(futbolcu, "Celebrate")
-              await get_tree().create_timer(2.0).timeout
-              top.position = Vector3(0, 0, 0.5)
-              play_anim(futbolcu, "Idle")
-              play_anim(kaleci, "KeeperIdle")
-
-          func play_anim(node: Node, anim_name: String):
-              if not node: return
-              var ap = node.find_child("AnimationPlayer", true, false)
-              if ap and ap.has_animation(anim_name):
-                  ap.play(anim_name)
-
-          func color_character(node: Node, shirt_col: Color, shorts_col: Color):
-              if not node: return
-              for child in node.find_children("*", "MeshInstance3D", true, false):
-                  var m: MeshInstance3D = child
-                  if m.mesh:
-                      for i in range(m.mesh.get_surface_count()):
-                          var mat = m.mesh.surface_get_material(i)
-                          if mat and mat.resource_name == "Shirt":
-                              var dup = mat.duplicate()
-                              dup.albedo_color = shirt_col
-                              m.set_surface_override_material(i, dup)
-                          elif mat and mat.resource_name == "Shorts":
-                              var dup = mat.duplicate()
-                              dup.albedo_color = shorts_col
-                              m.set_surface_override_material(i, dup)
-          EOF
-
-          cat << 'EOF' > project/Main.tscn
-          [gd_scene load_steps=5 format=3]
+          echo '[gd_scene load_steps=3 format=3]
           [ext_resource type="Script" path="res://Main.gd" id="1_s"]
-          [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
-          [sub_resource type="Sky" id="Sky"]
-          sky_material = SubResource("SkyMat")
-          [sub_resource type="Environment" id="Env"]
-          background_mode = 2
-          sky = SubResource("Sky")
           [node name="Main" type="Node3D"]
           script = ExtResource("1_s")
-          [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
-          environment = SubResource("Env")
-          [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
-          transform = Transform3D(0.7, -0.5, 0.5, 0, 0.7, 0.7, -0.7, -0.5, 0.5, 0, 8, 5)
-          shadow_enabled = true
           [node name="Camera3D" type="Camera3D" parent="."]
-          transform = Transform3D(1, 0, 0, 0, 0.94, 0.34, 0, -0.34, 0.94, 0, 2.2, 4.2)
-          EOF
+          transform = Transform3D(1, 0, 0, 0, 0.94, 0.34, 0, -0.34, 0.94, 0, 2.2, 4.2)' > project/Main.tscn
 
-          sed -i 's/^          //' project/project.godot
-          sed -i 's/^          //' project/Main.gd
-          sed -i 's/^          //' project/Main.tscn
-
-      - name: 4. Java 17 Kur
+      - name: 4. Java 17 Kur ve APK Derle
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 5. Godot 4 Indir ve Dogrudan APK Derle
+      - name: 5. Godot 4 Ile APK Olustur
         run: |
           keytool -keyalg RSA -genkeypair -alias androiddebugkey \
             -keypass android -keystore "$PWD/debug.keystore" -storepass android \
             -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
 
-          cat << EOF > project/export_presets.cfg
-          [preset.0]
+          echo '[preset.0]
           name="Android"
           platform="Android"
           runnable=true
-          dedicated_server=false
-          custom_features=""
           export_filter="all_resources"
-          include_filter=""
-          exclude_filter=""
           export_path="../build/penalti_ustasi.apk"
-          encryption_include_filters=""
-          encryption_exclude_filters=""
-          encrypt_pck=false
-          encrypt_directory=false
-
           [preset.0.options]
-          custom_template/debug=""
-          custom_template/release=""
           gradle_build/use_gradle_build=false
           architectures/arm64-v8a=true
-          architectures/armeabi-v7a=false
           package/unique_name="com.aliyuksekal.penaltiustasi"
           package/name="Penalti Ustasi"
           package/signed=true
           keystore/debug="$PWD/debug.keystore"
           keystore/debug_user="androiddebugkey"
-          keystore/debug_password="android"
-          keystore/release="$PWD/debug.keystore"
-          keystore/release_user="androiddebugkey"
-          keystore/release_password="android"
-          EOF
-
-          sed -i 's/^          //' project/export_presets.cfg
-
-          mkdir -p ~/.config/godot
-          cat << EOF > ~/.config/godot/editor_settings-4.tres
-          [gd_resource type="EditorSettings" format=3]
-          [resource]
-          export/android/android_sdk_path = "$ANDROID_HOME"
-          export/android/debug_keystore = "$PWD/debug.keystore"
-          export/android/debug_keystore_user = "androiddebugkey"
-          export/android/debug_keystore_pass = "android"
-          EOF
-
-          sed -i 's/^          //' ~/.config/godot/editor_settings-4.tres
+          keystore/debug_password="android"' > project/export_presets.cfg
 
           wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
           wget -q https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
@@ -362,14 +156,13 @@ jobs:
           chmod +x Godot_v4.3-stable_linux.x86_64
           ./Godot_v4.3-stable_linux.x86_64 --headless --path project --import
           ./Godot_v4.3-stable_linux.x86_64 --headless --path project --export-debug "Android" "$PWD/build/penalti_ustasi.apk"
-          ls -lh build/
 
-      - name: 6. Hazir APK ve GLB Indirme Linklerini Yayinla
+      - name: 6. APK ve GLB Dosyalarini Yayinla
         if: always()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v2.0.${{ github.run_number }}
-          name: "Hazir APK ve Mixamo GLB Dosyalari #${{ github.run_number }}"
+          name: "Sorunsuz APK ve GLB Dosyalari #${{ github.run_number }}"
           files: |
             build/penalti_ustasi.apk
             project/futbolcu.glb
