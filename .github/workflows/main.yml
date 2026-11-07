@@ -1,0 +1,332 @@
+name: Mixamo GLB ve APK Uretici
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-all:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Depoyu Cek ve Mixamo Zip Paketi Indir
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p mixamo_raw project build
+          gh release download v1 --repo ${{ github.repository }} --dir mixamo_raw
+          cd mixamo_raw
+          for z in *.zip; do
+            if [ -f "$z" ]; then unzip -o "$z"; rm "$z"; fi
+          done
+          ls -la
+
+      - name: 2. Blender Kur ve Mixamo FBX Dosyalarini GLB'ye Donustur
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+
+          cat << 'EOF' > convert_mixamo.py
+          import bpy
+          import os
+          import glob
+
+          def clear_scene():
+              bpy.ops.wm.read_factory_settings(use_empty=True)
+
+          def make_mat(name, color, rough=0.8):
+              m = bpy.data.materials.new(name=name)
+              m.use_nodes = True
+              bsdf = m.node_tree.nodes.get("Principled BSDF")
+              if bsdf:
+                  bsdf.inputs["Base Color"].default_value = color
+                  bsdf.inputs["Roughness"].default_value = rough
+              return m
+
+          fbx_files = glob.glob("mixamo_raw/**/*.fbx", recursive=True) + glob.glob("mixamo_raw/*.fbx")
+          fbx_files = list(set(fbx_files))
+          print("Bulunan FBX dosyalari:", fbx_files)
+
+          # En buyuk boyutlu FBX dosyasi karakterdir (Remy.fbx)
+          char_fbx = max(fbx_files, key=os.path.getsize)
+          anim_fbxs = [f for f in fbx_files if f != char_fbx]
+
+          def build_character(out_path, target_height, is_keeper, anim_map):
+              clear_scene()
+              bpy.ops.import_scene.fbx(filepath=char_fbx)
+
+              arm_obj = None
+              meshes = []
+              for obj in bpy.context.scene.objects:
+                  if obj.type == 'ARMATURE':
+                      arm_obj = obj
+                  elif obj.type == 'MESH':
+                      meshes.append(obj)
+
+              if not arm_obj:
+                  return
+
+              # Boy olcekleme (1.80m veya 1.88m) ve +Z yonune bakma
+              bpy.context.view_layer.objects.active = arm_obj
+              bpy.ops.object.mode_set(mode='OBJECT')
+              arm_obj.scale = (1.0, 1.0, 1.0)
+              bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+              min_z = min((v.co.z for m in meshes for v in m.data.vertices), default=0)
+              max_z = max((v.co.z for m in meshes for v in m.data.vertices), default=1.8)
+              cur_h = max(max_z - min_z, 0.1)
+              s_factor = target_height / cur_h
+              arm_obj.scale = (s_factor, s_factor, s_factor)
+              bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
+              # Istenen PBR Materyal Slotlarini Ata (Duz Beyaz Forma/Sort/Corap)
+              req_mats = [
+                  make_mat("Skin", (0.85, 0.65, 0.52, 1.0), 0.6),
+                  make_mat("Hair", (0.12, 0.09, 0.07, 1.0), 0.75),
+                  make_mat("Eyes", (0.2, 0.4, 0.7, 1.0), 0.1),
+                  make_mat("Shirt", (1.0, 1.0, 1.0, 1.0), 0.85),
+                  make_mat("Shorts", (1.0, 1.0, 1.0, 1.0), 0.85),
+                  make_mat("Socks", (1.0, 1.0, 1.0, 1.0), 0.9),
+                  make_mat("Boots", (0.15, 0.15, 0.15, 1.0), 0.4),
+              ]
+              if is_keeper:
+                  req_mats.append(make_mat("Gloves", (0.95, 0.95, 0.95, 1.0), 0.7))
+
+              for idx, m_obj in enumerate(meshes):
+                  m_obj.data.materials.clear()
+                  for rm in req_mats:
+                      m_obj.data.materials.append(rm)
+
+              # Animasyonlari Yukle ve Istenen Isimlerle NLA'ya Gom (In-Place / Root Motion Yok)
+              bpy.context.scene.render.fps = 30
+              if not arm_obj.animation_data:
+                  arm_obj.animation_data_create()
+
+              loaded_actions = []
+              for af in anim_fbxs:
+                  before_objs = set(bpy.data.objects)
+                  before_acts = set(bpy.data.actions)
+                  bpy.ops.import_scene.fbx(filepath=af)
+                  new_acts = set(bpy.data.actions) - before_acts
+                  new_objs = set(bpy.data.objects) - before_objs
+                  for act in new_acts:
+                      act.name = os.path.splitext(os.path.basename(af))[0].lower()
+                      loaded_actions.append(act)
+                  for no in new_objs:
+                      bpy.data.objects.remove(no, do_unlink=True)
+
+              for target_name, keywords in anim_map.items():
+                  matched_act = None
+                  for act in loaded_actions:
+                      if any(k in act.name for k in keywords):
+                          matched_act = act.copy()
+                          break
+                  if not matched_act and loaded_actions:
+                      matched_act = loaded_actions[0].copy()
+                  if not matched_act:
+                      matched_act = bpy.data.actions.new(name=target_name)
+
+                  matched_act.name = target_name
+                  matched_act.use_fake_user = True
+
+                  # Root Motion Sifirla (In-Place)
+                  for fc in matched_act.fcurves:
+                      if "Hips" in fc.data_path and "location" in fc.data_path and fc.array_index in (0, 2):
+                          for kp in fc.keyframe_points:
+                              kp.co[1] = 0.0
+
+                  track = arm_obj.animation_data.nla_tracks.new()
+                  track.name = target_name
+                  track.strips.new(target_name, 1, matched_act)
+
+              bpy.ops.export_scene.gltf(
+                  filepath=out_path,
+                  export_format='GLB',
+                  export_yup=True,
+                  export_animations=True,
+                  export_nla_strips=True,
+                  export_skins=True
+              )
+
+          futbolcu_map = {
+              "Idle": ["idle", "stand"],
+              "Run": ["run", "jog", "sprint"],
+              "PenaltyKick": ["kick", "strike", "penalty", "shoot", "pass"],
+              "Celebrate": ["celebrat", "victory", "cheer", "win"],
+              "Disappointed": ["disappoint", "defeat", "sad", "lose"]
+          }
+          build_character("project/futbolcu.glb", 1.80, False, futbolcu_map)
+
+          kaleci_map = {
+              "KeeperIdle": ["idle", "ready", "guard"],
+              "DiveLeft": ["dive", "save", "left", "body"],
+              "DiveRight": ["right", "dive", "save"],
+              "DiveLowLeft": ["low", "dive", "sidestep"],
+              "DiveLowRight": ["low", "right", "block"],
+              "JumpHigh": ["jump", "catch", "header"],
+              "CrouchSave": ["crouch", "scoop", "pick", "block"],
+              "KeeperCelebrate": ["celebrat", "victory", "fist"]
+          }
+          build_character("project/kaleci.glb", 1.88, True, kaleci_map)
+
+          # Futbol Topu (0.22m Cap)
+          clear_scene()
+          bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4, radius=0.11, location=(0, 0, 0.11))
+          ball = bpy.context.active_object
+          ball.data.materials.append(make_mat("BallWhite", (0.95, 0.95, 0.95, 1.0), 0.4))
+          ball.data.materials.append(make_mat("BallBlack", (0.1, 0.1, 0.1, 1.0), 0.4))
+          bpy.ops.export_scene.gltf(filepath="project/top.glb", export_format='GLB', export_yup=True)
+          EOF
+
+          blender -b -P convert_mixamo.py
+
+      - name: 3. Godot 4 Penalti Oyunu ve Forma Boyama Sistemini Kur
+        run: |
+          cat << 'EOF' > project/project.godot
+          config_version=5
+          [application]
+          config/name="Penalti Ustasi"
+          run/main_scene="res://Main.tscn"
+          config/features=PackedStringArray("4.3", "Mobile")
+          [display]
+          window/size/viewport_width=1080
+          window/size/viewport_height=1920
+          window/handheld/orientation=1
+          [rendering]
+          renderer/rendering_method="mobile"
+          EOF
+
+          cat << 'EOF' > project/Main.gd
+          extends Node3D
+
+          @onready var futbolcu = $Futbolcu
+          @onready var kaleci = $Kaleci
+          @onready var top = $Top
+
+          func _ready():
+              color_character(futbolcu, Color(0.85, 0.1, 0.15), Color(0.95, 0.75, 0.1))
+              color_character(kaleci, Color(0.1, 0.65, 0.25), Color(0.1, 0.1, 0.1))
+              play_anim(futbolcu, "Idle")
+              play_anim(kaleci, "KeeperIdle")
+
+          func _input(event):
+              if event is InputEventScreenTouch and event.pressed:
+                  shoot_penalty()
+
+          func shoot_penalty():
+              play_anim(futbolcu, "PenaltyKick")
+              await get_tree().create_timer(0.6).timeout
+              play_anim(kaleci, "DiveLeft")
+              var tw = create_tween()
+              tw.tween_property(top, "position", Vector3(randf_range(-1.8, 1.8), randf_range(0.2, 1.8), -9.2), 0.45)
+              await tw.finished
+              play_anim(futbolcu, "Celebrate")
+              await get_tree().create_timer(2.0).timeout
+              top.position = Vector3(0, 0, 0.5)
+              play_anim(futbolcu, "Idle")
+              play_anim(kaleci, "KeeperIdle")
+
+          func play_anim(node: Node, anim_name: String):
+              var ap = node.find_child("AnimationPlayer", true, false)
+              if ap and ap.has_animation(anim_name):
+                  ap.play(anim_name)
+
+          func color_character(node: Node, shirt_col: Color, shorts_col: Color):
+              for child in node.find_children("*", "MeshInstance3D", true, false):
+                  var m: MeshInstance3D = child
+                  if m.mesh:
+                      for i in range(m.mesh.get_surface_count()):
+                          var mat = m.mesh.surface_get_material(i)
+                          if mat and mat.resource_name == "Shirt":
+                              var dup = mat.duplicate()
+                              dup.albedo_color = shirt_col
+                              m.set_surface_override_material(i, dup)
+                          elif mat and mat.resource_name == "Shorts":
+                              var dup = mat.duplicate()
+                              dup.albedo_color = shorts_col
+                              m.set_surface_override_material(i, dup)
+          EOF
+
+          cat << 'EOF' > project/Main.tscn
+          [gd_scene load_steps=8 format=3]
+          [ext_resource type="PackedScene" path="res://futbolcu.glb" id="1_f"]
+          [ext_resource type="PackedScene" path="res://kaleci.glb" id="2_k"]
+          [ext_resource type="PackedScene" path="res://top.glb" id="3_t"]
+          [ext_resource type="Script" path="res://Main.gd" id="4_s"]
+
+          [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
+          [sub_resource type="Sky" id="Sky"]
+          sky_material = SubResource("SkyMat")
+          [sub_resource type="Environment" id="Env"]
+          background_mode = 2
+          sky = SubResource("Sky")
+
+          [node name="Main" type="Node3D"]
+          script = ExtResource("4_s")
+          [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+          environment = SubResource("Env")
+          [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+          transform = Transform3D(0.7, -0.5, 0.5, 0, 0.7, 0.7, -0.7, -0.5, 0.5, 0, 8, 5)
+          shadow_enabled = true
+          [node name="Camera3D" type="Camera3D" parent="."]
+          transform = Transform3D(1, 0, 0, 0, 0.94, 0.34, 0, -0.34, 0.94, 0, 2.2, 4.2)
+          [node name="Futbolcu" parent="." instance=ExtResource("1_f")]
+          transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 1.5)
+          [node name="Kaleci" parent="." instance=ExtResource("2_k")]
+          transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -9.5)
+          [node name="Top" parent="." instance=ExtResource("3_t")]
+          transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.5)
+          EOF
+
+          cat << 'EOF' > project/export_presets.cfg
+          [preset.0]
+          name="Android"
+          platform="Android"
+          runnable=true
+          export_filter="all_resources"
+          export_path="../build/penalti_ustasi.apk"
+          [preset.0.options]
+          gradle_build/use_gradle_build=false
+          architectures/arm64-v8a=true
+          package/unique_name="com.aliyuksekal.penaltiustasi"
+          package/name="Penalti Ustasi"
+          package/signed=true
+          keystore/debug="../debug.keystore"
+          keystore/debug_user="androiddebugkey"
+          keystore/debug_password="android"
+          EOF
+
+      - name: 4. Imza Anahtari (Keystore) ve Java 17 Kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Keystore Olustur
+        run: |
+          keytool -keyalg RSA -genkeypair -alias androiddebugkey \
+            -keypass android -keystore debug.keystore -storepass android \
+            -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
+
+      - name: 5. Godot 4 ile APK Derle
+        uses: firebelley/godot-export@v5.2.0
+        with:
+          godot_executable_download_url: https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
+          godot_export_templates_download_url: https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
+          relative_project_path: ./project
+          preset_name: "Android"
+          archive_output: false
+
+      - name: 6. Hazir APK ve GLB Indirme Linklerini Yayinla
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.0.${{ github.run_number }}
+          name: "Hazir APK ve Mixamo GLB Dosyalari #${{ github.run_number }}"
+          files: |
+            build/penalti_ustasi.apk
+            project/futbolcu.glb
+            project/kaleci.glb
+            project/top.glb
