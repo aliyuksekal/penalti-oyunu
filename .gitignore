@@ -1,0 +1,14 @@
+# Godot
+.godot/
+/android/
+*.translation
+export_credentials.cfg
+# derleme çıktıları
+/build/
+*.apk
+*.aab
+*.jks
+*.keystore
+# indirilen font (CI indirir)
+/assets/fonts/*.ttf
+/assets/models/remy.glb

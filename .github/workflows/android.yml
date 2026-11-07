@@ -1,0 +1,289 @@
+name: Penaltı Ustası derleme (AAB + APK)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "store/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: "4.7.2"
+  GODOT_TAG: "4.7.2-stable"
+  TEMPLATE_DIR: "4.7.2.stable"
+  BUILD_TOOLS: "36.1.0"
+  NDK_VERSION: "29.0.14206865"
+  VERSION_BASE: "1.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Godot önbelleği
+        uses: actions/cache@v4
+        with:
+          path: ~/godot-dl
+          key: godot-${{ env.GODOT_TAG }}-v2
+
+      - name: Godot ve dışa aktarma şablonlarını indir
+        run: |
+          set -e
+          mkdir -p ~/godot-dl && cd ~/godot-dl
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_TAG}"
+          for f in "Godot_v${GODOT_TAG}_linux.x86_64.zip" "Godot_v${GODOT_TAG}_export_templates.tpz" "Godot_native_debug_symbols.${GODOT_VERSION}.stable.template_release.android.zip"; do
+            [ -s "$f" ] || curl -fsSL --retry 3 -o "$f" "$base/$f"
+          done
+          unzip -o -q "Godot_v${GODOT_TAG}_linux.x86_64.zip" -d ~/godot-bin
+          sudo ln -sf ~/godot-bin/Godot_v${GODOT_TAG}_linux.x86_64 /usr/local/bin/godot
+          rm -rf /tmp/tpl && mkdir -p /tmp/tpl ~/.local/share/godot/export_templates/${TEMPLATE_DIR}
+          unzip -o -q "Godot_v${GODOT_TAG}_export_templates.tpz" -d /tmp/tpl
+          cp -r /tmp/tpl/templates/. ~/.local/share/godot/export_templates/${TEMPLATE_DIR}/
+          godot --version
+
+      - name: Android SDK bileşenleri (API 36)
+        run: |
+          set -e
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" --install "platform-tools" "platforms;android-36" "build-tools;${BUILD_TOOLS}" "ndk;${NDK_VERSION}" "cmake;3.22.1" > /dev/null
+          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools"
+
+      - name: Godot editör ayarları (SDK/JDK yolları)
+        run: |
+          mkdir -p ~/.config/godot
+          for f in editor_settings-4.7.tres editor_settings-4.tres; do
+            printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' "$ANDROID_HOME" "$JAVA_HOME" > ~/.config/godot/$f
+          done
+
+      - name: Yazı tipi (Nunito, OFL)
+        run: |
+          mkdir -p assets/fonts
+          curl -fsSL --retry 3 -o assets/fonts/Nunito.ttf "https://github.com/google/fonts/raw/main/ofl/nunito/Nunito%5Bwght%5D.ttf" \
+            || echo "::warning::Nunito indirilemedi, sistem fontu kullanılacak"
+          ls -la assets/fonts || true
+
+      - name: Mixamo paketi -> GLB (Blender)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          mkdir -p /tmp/mixamo build/preview assets/models
+          gh release download v1 --repo "$GITHUB_REPOSITORY" --dir /tmp/mixamo --pattern "*.zip"
+          (cd /tmp/mixamo && for z in *.zip; do unzip -o -q "$z"; done && ls | head -80)
+          sudo apt-get update -qq && sudo apt-get install -y -qq blender > /dev/null
+          blender --version | head -1
+          blender -b --factory-startup -P tools/mixamo_to_glb.py -- /tmp/mixamo assets/models/remy.glb build/remy_info.json build/preview 2>&1 | grep -vE "^Fra:|Sample|Rendering" | tail -60
+          ls -la assets/models build/preview
+
+      - name: Android derleme şablonu + R8
+        run: |
+          set -e
+          mkdir -p android/build
+          unzip -o -q ~/.local/share/godot/export_templates/${TEMPLATE_DIR}/android_source.zip -d android/build
+          printf '%s' "${TEMPLATE_DIR}" > android/.build_version
+          touch android/build/.gdignore
+          cp android_overrides/proguard-godot.pro android/build/
+          python3 tools/patch_gradle.py android/build/build.gradle
+          grep -n "minifyEnabled\|targetSdk\|compileSdk" android/build/build.gradle android/build/config.gradle | head -20
+
+      - name: Sürüm numarası
+        run: |
+          VC=$(( GITHUB_RUN_NUMBER + 10 ))
+          VN="${VERSION_BASE}.${GITHUB_RUN_NUMBER}"
+          sed -i "s/^version\/code=.*/version\/code=${VC}/; s/^version\/name=.*/version\/name=\"${VN}\"/" export_presets.cfg
+          sed -i "s/^config\/version=.*/config\/version=\"${VN}\"/" project.godot
+          echo "VERSION_CODE=${VC}" >> $GITHUB_ENV
+          echo "VERSION_NAME=${VN}" >> $GITHUB_ENV
+
+      - name: Kaynakları içe aktar
+        run: |
+          godot --headless --path . --import 2>&1 | tail -20 || true
+          godot --headless --path . --import 2>&1 | tee import.log | tail -20
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|SHADER ERROR" import.log; then echo "::error::Betik hatası"; exit 1; fi
+
+      - name: Otomatik testler
+        run: |
+          set -o pipefail
+          timeout 600 godot --headless --path . -- --selftest 2>&1 | tee selftest.log
+          grep -q "SELFTEST PASS" selftest.log
+          if grep -E "SCRIPT ERROR|SHADER ERROR|Parse Error|Invalid call|Invalid access|Invalid get|Invalid set|Invalid assignment|Invalid operands|Cannot call" selftest.log; then echo "::error::Çalışma zamanı hatası"; exit 1; fi
+
+      - name: Ekran görüntüleri (gerçek OpenGL çizimi)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri libglx-mesa0 mesa-utils > /dev/null
+          mkdir -p build/screenshots && touch build/.gdignore
+          timeout 600 xvfb-run -a -s "-screen 0 2600x2600x24" godot --path . --rendering-driver opengl3 --resolution 1920x1080 -- --screenshots=$PWD/build/screenshots 2>&1 | tee shots.log || true
+          ls -la build/screenshots
+          if grep -E "SCRIPT ERROR|SHADER ERROR|Invalid call|Invalid access|Invalid get|Invalid set|Invalid assignment" shots.log; then echo "::error::Çizim sırasında hata"; exit 1; fi
+
+      - name: İmza anahtarı
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          KS="$RUNNER_TEMP/upload.jks"
+          # telefondan yapıştırırken eklenen boşluk / satır sonlarını temizle
+          B64=$(printf '%s' "$KS_B64" | tr -d ' \r\n\t')
+          PASS=$(printf '%s' "$KS_PASS" | tr -d '\r')
+          # ANAHTAR_BILGISI.txt metninin tamamı yapıştırıldıysa şifreyi içinden ayıkla
+          if printf '%s' "$PASS" | grep -q "ANDROID_KEYSTORE_PASSWORD"; then
+            PASS=$(printf '%s\n' "$PASS" | sed -n 's/.*ANDROID_KEYSTORE_PASSWORD *= *\([^ ]*\).*/\1/p' | head -1)
+          fi
+          PASS=$(printf '%s' "$PASS" | tr -d '\n')
+          ALIAS=$(printf '%s' "$KS_ALIAS" | tr -d ' \r\n\t')
+          # alias geçerli bir ad değilse (boş, dosya içeriği vb.) varsayılan "upload"
+          if ! printf '%s' "$ALIAS" | grep -Eq '^[A-Za-z0-9_.-]{1,64}$'; then ALIAS=upload; fi
+          if [ -n "$B64" ] && [ -n "$PASS" ]; then
+            echo "::add-mask::$PASS"
+            printf '%s' "$B64" | base64 -d > "$KS" || { echo "::error::ANDROID_KEYSTORE_BASE64 çözülemedi (eksik/yanlış kopyalanmış olabilir)"; exit 1; }
+            echo "Teşhis: base64 uzunluğu=${#B64}, şifre uzunluğu=${#PASS}, jks sha256=$(sha256sum "$KS" | cut -c1-16)"
+            if ! keytool -list -keystore "$KS" -storepass "$PASS" > /dev/null 2>&1; then echo "::error::Şifre dosyayı açmıyor (ANDROID_KEYSTORE_PASSWORD)"; fi
+            if ! keytool -list -keystore "$KS" -storepass "$PASS" -alias "$ALIAS" > /dev/null 2>&1; then
+              echo "::error::Anahtar açılamadı: ANDROID_KEYSTORE_PASSWORD veya ANDROID_KEY_ALIAS hatalı"; exit 1
+            fi
+            keytool -list -v -keystore "$KS" -storepass "$PASS" -alias "$ALIAS" 2>/dev/null | grep -E "Owner|SHA256" | head -2
+            echo "SIGNING=permanent" >> $GITHUB_ENV
+          else
+            echo "::warning::İmza gizli anahtarları yok - GEÇİCİ anahtarla imzalanıyor. Bu AAB Play Console'a yüklenmemeli."
+            ALIAS=upload
+            PASS=$(openssl rand -hex 16)
+            echo "::add-mask::$PASS"
+            keytool -genkeypair -keystore "$KS" -storetype JKS -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$PASS" -keypass "$PASS" -dname "CN=temporary, O=matali, C=TR" > /dev/null 2>&1
+            echo "SIGNING=temporary" >> $GITHUB_ENV
+          fi
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$KS" >> $GITHUB_ENV
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=$ALIAS" >> $GITHUB_ENV
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=$PASS" >> $GITHUB_ENV
+
+      - name: Dışa aktar (AAB + APK)
+        run: |
+          set -e
+          mkdir -p build
+          godot --headless --path . --export-release "Android AAB" build/penalti-ustasi.aab 2>&1 | tee export_aab.log | tail -40
+          test -s build/penalti-ustasi.aab
+          MAP=$(find android/build/build/outputs -name mapping.txt | head -1 || true)
+          [ -n "$MAP" ] && cp "$MAP" build/mapping.txt || echo "::warning::mapping.txt bulunamadı"
+          godot --headless --path . --export-release "Android APK" build/penalti-ustasi.apk 2>&1 | tee export_apk.log | tail -40
+          test -s build/penalti-ustasi.apk
+          # Play Console'a yalnızca gönderdiğimiz ABI'lerin sembolleri (arm64-v8a, armeabi-v7a, x86_64)
+          rm -rf /tmp/sym && mkdir -p /tmp/sym && unzip -q ~/godot-dl/Godot_native_debug_symbols.${GODOT_VERSION}.stable.template_release.android.zip -d /tmp/sym
+          find /tmp/sym -maxdepth 3 -type d | head -20
+          find /tmp/sym -type d -name x86 -prune -exec rm -rf {} + || true
+          ROOTDIR=$(dirname "$(find /tmp/sym -type d -name arm64-v8a | head -1)")
+          (cd "$ROOTDIR" && zip -q -r -9 "$GITHUB_WORKSPACE/build/native-debug-symbols.zip" .)
+          unzip -l build/native-debug-symbols.zip | tail -8
+
+      - name: Doğrula (hedef SDK, imza, 16 KB hizalama)
+        run: |
+          set -e
+          BT="$ANDROID_HOME/build-tools/${BUILD_TOOLS}"
+          "$BT/aapt2" dump badging build/penalti-ustasi.apk | grep -E "package:|sdkVersion|targetSdkVersion|application-label:|uses-permission|native-code" | tee verify.txt
+          grep -q "targetSdkVersion:'36'" verify.txt
+          "$BT/apksigner" verify --print-certs build/penalti-ustasi.apk | head -5 | tee -a verify.txt
+          "$BT/zipalign" -c -P 16 4 build/penalti-ustasi.apk && echo "16 KB hizalama: OK" | tee -a verify.txt
+          jarsigner -verify build/penalti-ustasi.aab | tail -1 | tee -a verify.txt
+          ls -la build
+
+      - name: bundletool
+        run: curl -fsSL --retry 3 -o /tmp/bundletool.jar https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar
+
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Emülatörde kurulum ve açılış testi (Android 15)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swangle_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash tools/device_test.sh
+
+      - name: Sürüm notu
+        run: |
+          {
+            echo "## Penaltı Ustası ${VERSION_NAME} (sürüm kodu ${VERSION_CODE})"
+            echo
+            echo "- **penalti-ustasi.apk** – telefona doğrudan kurulum"
+            echo "- **penalti-ustasi.aab** – Google Play Console'a yüklenecek paket"
+            echo "- **mapping.txt** – Play Console > App bundle explorer > Downloads > ReTrace mapping file"
+            echo "- **native-debug-symbols.zip** – Play Console > App bundle explorer > Downloads > Native debug symbols"
+            echo
+            if [ "$SIGNING" = "temporary" ]; then
+              echo "> ⚠️ Bu sürüm GEÇİCİ anahtarla imzalandı. Play Console'a yüklemeyin; önce imza gizli anahtarlarını ekleyin."
+            else
+              echo "> ✅ Kalıcı yükleme anahtarıyla imzalandı."
+            fi
+            echo
+            echo '```'
+            cat verify.txt
+            echo
+            cat build/device/result.txt 2>/dev/null
+            echo '```'
+          } > build/RELEASE_NOTES.md
+
+      - name: Ekran görüntüleri ve günlükleri ci-out dalına yaz
+        if: always()
+        run: |
+          rm -rf /tmp/out && mkdir -p /tmp/out
+          cp -r build/screenshots /tmp/out/ 2>/dev/null || true
+          cp selftest.log shots.log verify.txt export_aab.log export_apk.log /tmp/out/ 2>/dev/null || true
+          cp -r build/device /tmp/out/ 2>/dev/null || true
+          cp -r build/preview /tmp/out/ 2>/dev/null || true
+          cp build/remy_info.json /tmp/out/ 2>/dev/null || true
+          ls -la build > /tmp/out/build_listing.txt 2>/dev/null || true
+          cd /tmp/out && git init -q && git checkout -q -b ci-out && git add -A
+          git -c user.name="ci" -c user.email="ci@users.noreply.github.com" commit -q -m "CI ${VERSION_NAME}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-out
+
+      - name: Yapıtları yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: penalti-ustasi-${{ env.VERSION_NAME }}
+          path: |
+            build/*.apk
+            build/*.aab
+            build/mapping.txt
+            build/screenshots/
+            selftest.log
+            shots.log
+            export_aab.log
+            export_apk.log
+          if-no-files-found: ignore
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: Penaltı Ustası ${{ env.VERSION_NAME }}
+          body_path: build/RELEASE_NOTES.md
+          make_latest: true
+          files: |
+            build/penalti-ustasi.apk
+            build/penalti-ustasi.aab
+            build/mapping.txt
+            build/native-debug-symbols.zip
