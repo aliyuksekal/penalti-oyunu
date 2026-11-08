@@ -171,6 +171,8 @@ func _controls() -> void:
 	main.truck.upright_at(Vector2(cx + 40.0, main.terrain.height_at(cx + 40.0) - 100.0))
 	await _wait(1.5)
 	var g1: int = main.gold_run
+	var run_now: Dictionary = main._saved_run.duplicate()
+	print("  teslimat sonrası: durum=%s bitti=%s neden=%s yük=%d kayıt=%s" % [main.state, main.game_over, main.end_reason, main.cargo.size(), str(run_now)])
 	await _wait(1.0)
 	_check(main.next_cp == cp0 + 1, "istasyonda teslimat yapıldı")
 	_check(g1 > g0 and g1 - g0 <= 2000 and main.gold_run == g1, "ödül bir kez verildi ve sabit kaldı (+%d)" % (g1 - g0))
@@ -178,8 +180,9 @@ func _controls() -> void:
 	# şifreli kayıt: düz metin olarak okunamaz, bozulursa yedekten açılır
 	main._save()
 	main._save()
-	var plain := ConfigFile.new()
-	_check(plain.load("user://dropzero.dat") != OK, "kayıt şifreli (düz okunamıyor)")
+	var raw: PackedByteArray = FileAccess.get_file_as_bytes("user://dropzero.dat")
+	var raw_txt: String = raw.get_string_from_ascii()
+	_check(raw.size() > 32 and not raw_txt.contains("altin") and not raw_txt.contains("jeton"), "kayıt şifreli (düz okunamıyor)")
 	var fa := FileAccess.open("user://dropzero.dat", FileAccess.READ_WRITE)
 	fa.seek(40)
 	fa.store_8(fa.get_8() ^ 0xFF)
@@ -190,7 +193,7 @@ func _controls() -> void:
 	_check(main.tokens == tok, "bozulan kayıt yedekten yüklendi")
 	# kaldığı yerden devam
 	var seed0: int = main.terrain.get_seed()
-	var gsave: int = int(main._saved_run["gold"])
+	var gsave: int = int(main._saved_run.get("gold", -1))
 	main.next_cp = 1
 	main.gold_run = 0
 	main.resume_run()

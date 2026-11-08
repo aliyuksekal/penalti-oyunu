@@ -134,7 +134,7 @@ jobs:
             echo "===== $c"
             timeout 240 godot --headless --path . res://test/test.tscn -- --case=$c > case_$c.log 2>&1 || true
             grep -E "ok  |HATA|SONUÇ|SCRIPT ERROR|ERROR|at: " case_$c.log | head -40
-            if grep -vE "still in use at exit|instances leaked at exit" case_$c.log | grep -qE "SCRIPT ERROR|ERROR|HATA"; then fail=1; fi
+            if grep -vE "still in use at exit|instances leaked at exit|MD5 sum of the decrypted file" case_$c.log | grep -qE "SCRIPT ERROR|ERROR|HATA"; then fail=1; fi
             if ! grep -q "SONUÇ" case_$c.log; then echo "::error::$c testi bitmedi"; fail=1; fi
           done
           cat case_*.log > selftest.log
