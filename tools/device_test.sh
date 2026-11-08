@@ -38,7 +38,7 @@ SIZE=$(adb shell wm size | tail -1 | awk '{print $NF}'); W=${SIZE%x*}; H=${SIZE#
 if [ "$W" -gt "$H" ]; then BX=$((W*16/100)); BY=$((H*88/100)); else BX=$((W*25/100)); BY=$((H*95/100)); fi
 adb shell input tap $BX $BY; sleep 4
 adb exec-out screencap -p > "$OUT/02_game.png"
-adb shell input swipe $((W*90/100)) $((H*90/100)) $((W*90/100)) $((H*90/100)) 4000; sleep 1
+adb shell input swipe $((W*88/100)) $((H*95/100)) $((W*88/100)) $((H*95/100)) 5000; sleep 1
 adb exec-out screencap -p > "$OUT/03_after_gas.png"
 PID=$(adb shell pidof "$PKG" | tr -d '\r')
 adb logcat -d > "$OUT/logcat.txt"

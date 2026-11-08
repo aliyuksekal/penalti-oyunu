@@ -23,6 +23,26 @@ func _ready() -> void:
 	elif cs == "alltrucks":
 		await _alltrucks()
 		get_tree().quit()
+	elif cs == "touch":
+		# dokunmatik GAZ pedalı: pedalın ortasına parmak bas, 6 sn tut
+		main.start_game()
+		await _wait(0.5)
+		var r: Rect2 = main.gas_btn.get_global_rect()
+		var e := InputEventScreenTouch.new()
+		e.index = 0
+		e.position = r.get_center()
+		e.pressed = true
+		Input.parse_input_event(e)
+		await _wait(6.0)
+		_check(main.gas_btn.down, "GAZ pedalı basılı görünüyor")
+		_check(main._distance_m() > 25.0, "dokunmatik gazla gidildi: %d m" % int(main._distance_m()))
+		e = e.duplicate()
+		e.pressed = false
+		Input.parse_input_event(e)
+		await _wait(0.3)
+		_check(not main.gas_btn.down, "parmak kalkınca gaz bırakıldı")
+		print("SONUÇ: dokunmatik bitti")
+		get_tree().quit()
 	elif cs == "shots":
 		await _shots()
 		get_tree().quit()
@@ -162,7 +182,7 @@ func _shots() -> void:
 	await _shot("m_night.png")
 
 func _physics_process(delta: float) -> void:
-	if _done or not _driving or _case() in ["economy", "alltrucks", "shots"]:
+	if _done or not _driving or _case() in ["economy", "alltrucks", "shots", "touch"]:
 		return
 	t += delta
 	var tr = main.truck
