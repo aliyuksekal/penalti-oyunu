@@ -2037,7 +2037,8 @@ func _portrait_scale(panel: Control) -> void:
 		target.pivot_offset = Vector2(target.size.x * 0.5, target.size.y if bottom else target.size.y * 0.5)
 		target.scale = Vector2(k, k)
 	panel.resized.connect(fit)
-	target.resized.connect(fit)
+	if target != panel:
+		target.resized.connect(fit)
 	get_viewport().size_changed.connect(fit)
 	var vp: Viewport = get_viewport()
 	var unhook := func() -> void:
