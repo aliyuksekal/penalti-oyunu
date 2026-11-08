@@ -821,6 +821,8 @@ func _physics_process(delta: float) -> void:
 	_update_stuck(delta, x, gas or brk)
 	_check_cargo(delta)
 	_check_checkpoint()
+	if at_station:
+		return   # teslimat yeni yapıldı, kasa boş: oyun sonu kontrolü yapılmaz
 	_check_game_over(delta)
 	_update_sounds(delta)
 
