@@ -2,20 +2,12 @@ extends Node
 ## Ses yöneticisi: müzik, motor sesi ve efektler. "Muzik" ve "Efekt" ses kanalları
 ## ayrı ayrı açılıp kapatılır. Tüm sesler tools/make_audio.py ile sıfırdan sentezlendi.
 
-const MUSIC := {
-	"garaj": preload("res://audio/muzik_garaj.wav"),
-	"yol": preload("res://audio/muzik_yol.wav"),
-}
-const SFX := {
-	"yuk_dustu": preload("res://audio/yuk_dustu.wav"),
-	"teslimat": preload("res://audio/teslimat.wav"),
-	"oyun_bitti": preload("res://audio/oyun_bitti.wav"),
-	"tik": preload("res://audio/tik.wav"),
-	"inis": preload("res://audio/inis.wav"),
-	"hararet": preload("res://audio/hararet.wav"),
-	"satin_al": preload("res://audio/satin_al.wav"),
-}
-const ENGINE := preload("res://audio/motor.wav")
+const MUSIC_FILES := {"garaj": "res://audio/muzik_garaj.wav", "yol": "res://audio/muzik_yol.wav"}
+const SFX_FILES := ["yuk_dustu", "teslimat", "oyun_bitti", "tik", "inis", "hararet", "satin_al"]
+
+var MUSIC: Dictionary = {}
+var SFX: Dictionary = {}
+var ENGINE: AudioStream
 
 var music_on: bool = true
 var sfx_on: bool = true
@@ -31,6 +23,11 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_bus_music = _ensure_bus("Muzik")
 	_bus_sfx = _ensure_bus("Efekt")
+	for k in MUSIC_FILES:
+		MUSIC[k] = load(MUSIC_FILES[k])
+	for n in SFX_FILES:
+		SFX[n] = load("res://audio/%s.wav" % n)
+	ENGINE = load("res://audio/motor.wav")
 	for s in MUSIC.values():
 		_make_loop(s)
 	_make_loop(ENGINE)
@@ -88,12 +85,12 @@ func play_music(track: String) -> void:
 	_music.play()
 
 
-func sfx(name: String, volume_db: float = 0.0, pitch: float = 1.0) -> void:
-	if not sfx_on or not SFX.has(name):
+func sfx(sfx_name: String, volume_db: float = 0.0, pitch: float = 1.0) -> void:
+	if not sfx_on or not SFX.has(sfx_name):
 		return
 	for p in _pool:
 		if not p.playing:
-			p.stream = SFX[name]
+			p.stream = SFX[sfx_name]
 			p.volume_db = volume_db
 			p.pitch_scale = pitch
 			p.play()

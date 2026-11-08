@@ -17,7 +17,7 @@ const PX_PER_M := 50.0          # 1 metre = 50 piksel
 @export var flat_blend: float = 320.0          # düzlükten tepeye yumuşak geçiş (px)
 @export var max_difficulty_at_m: float = 2000.0 # bu mesafede zorluk tavan yapar
 @export var feature_len_m: float = 200.0        # her yol kesiminin uzunluğu (tümsek, dik yokuş, rampa...)
-@export var features_start_m: float = 120.0     # ilk engel bu mesafeden sonra
+@export var features_start_m: float = 150.0     # ilk engel bu mesafeden sonra
 @export var noise_seed: int = 0                 # 0 = her oyunda farklı arazi
 
 @export_group("Renkler")
@@ -102,7 +102,7 @@ func feature_at(idx: int) -> Dictionary:
 				f["period"] = r.randf_range(85.0, 140.0)
 			"steep":
 				f["half"] = lerpf(1000.0, 760.0, d)
-				f["h"] = lerpf(160.0, 470.0, d) * r.randf_range(0.85, 1.1)
+				f["h"] = lerpf(90.0, 470.0, d) * r.randf_range(0.85, 1.1)
 			"ramp":
 				f["half"] = 400.0
 				f["h"] = lerpf(45.0, 120.0, d)
@@ -111,7 +111,7 @@ func feature_at(idx: int) -> Dictionary:
 				f["h"] = lerpf(12.0, 36.0, d)
 			"valley":
 				f["half"] = lerpf(800.0, 620.0, d)
-				f["h"] = lerpf(130.0, 360.0, d)
+				f["h"] = lerpf(80.0, 360.0, d)
 	_features[idx] = f
 	return f
 
