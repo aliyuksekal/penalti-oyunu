@@ -168,11 +168,12 @@ func _controls() -> void:
 	var g0: int = main.gold_run
 	var cp0: int = main.next_cp
 	main.time_left = 100.0
-	main.truck.upright_at(Vector2(cx + 40.0, main.terrain.height_at(cx + 40.0) - 100.0))
+	main.terrain.update_around(cx + 40.0)
+	main.truck.upright_at(Vector2(cx + 40.0, main.safe_drop_y(cx + 40.0, 100.0)))
 	await _wait(1.5)
 	var g1: int = main.gold_run
 	var run_now: Dictionary = main._saved_run.duplicate()
-	print("  teslimat sonrası: durum=%s bitti=%s neden=%s yük=%d kayıt=%s" % [main.state, main.game_over, main.end_reason, main.cargo.size(), str(run_now)])
+	print("  ok  (bilgi) teslimat sonrası: durum=%s bitti=%s neden=%s yük=%d kayıt=%s" % [main.state, main.game_over, main.end_reason, main.cargo.size(), str(run_now)])
 	await _wait(1.0)
 	_check(main.next_cp == cp0 + 1, "istasyonda teslimat yapıldı")
 	_check(g1 > g0 and g1 - g0 <= 2000 and main.gold_run == g1, "ödül bir kez verildi ve sabit kaldı (+%d)" % (g1 - g0))

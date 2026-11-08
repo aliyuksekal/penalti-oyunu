@@ -576,6 +576,15 @@ func resume_run() -> void:
 	_toast("Kaldığın yerden devam: Bölge %d" % cp, 2.0)
 
 
+## Kamyonu x noktasına koyarken gövde merkezinin y'si: iki tekerin de altındaki en yüksek
+## zeminin üstünde kalır (yokuşta tekerlek toprağın içine gömülüp düşmesin)
+func safe_drop_y(x: float, gap: float) -> float:
+	var top: float = terrain.height_at(x)
+	for dx in [-110.0, -78.0, -40.0, 40.0, 78.0, 110.0]:
+		top = minf(top, terrain.height_at(x + dx))
+	return top - gap - (truck.wheel_r - 26.0)
+
+
 ## Seçili kamyonu (ve yükseltmelerini) başlangıç noktasında kur, kasayı yükle
 func _build_truck(at_x: float = 60.0) -> void:
 	for c in cargo:
@@ -586,7 +595,7 @@ func _build_truck(at_x: float = 60.0) -> void:
 		truck.teardown()
 	truck.apply_model(TruckCatalog.by_id(selected), levels_of(selected))
 	var sx: float = at_x
-	truck.build(Vector2(sx, terrain.height_at(sx) - 95.0 - (truck.wheel_r - 26.0)))
+	truck.build(Vector2(sx, safe_drop_y(sx, 95.0)))
 	start_x = 60.0
 	_spawn_cargo()
 
@@ -939,7 +948,7 @@ func _apply_rescue(kind: String) -> void:
 	else:
 		flip_rescues += 1
 		var x: float = truck.body.global_position.x
-		truck.upright_at(Vector2(x, terrain.height_at(x) - 100.0 - (truck.wheel_r - 26.0)))
+		truck.upright_at(Vector2(x, safe_drop_y(x, 100.0)))
 		# kasada kalan yükleri yerine koy
 		_repack_cargo()
 		_out_time.clear()
