@@ -45,6 +45,82 @@ const ZONE_COLORS: Array = [
 	[Color(0.90, 0.93, 0.97), Color(0.50, 0.50, 0.54), Color(0.36, 0.36, 0.40)],   # Zirve (karlı)
 ]
 
+## ---------------- YOL TÜRLERİ ----------------
+## Her 250 m'de yol türü değişir: yüzey rengi, tutuş (sürtünme), engebe ve süslemeler farklı.
+@export var road_len_m: float = 250.0
+const ROADS := {
+	"asfalt": {"name": "ASFALT YOL", "friction": 1.15, "bumps": 0.15, "amp": 0.8, "feat": 0.45, "surface": Color(0.24, 0.25, 0.28), "under": Color(0.16, 0.16, 0.18)},
+	"toprak": {"name": "TOPRAK YOL", "friction": 1.0, "bumps": 1.0, "amp": 1.0, "feat": 1.0, "surface": Color(0.62, 0.46, 0.3), "under": Color(0.44, 0.31, 0.2)},
+	"dag": {"name": "DAĞ YOLU", "friction": 0.95, "bumps": 1.25, "amp": 1.35, "feat": 1.25, "surface": Color(0.58, 0.57, 0.55), "under": Color(0.38, 0.37, 0.36)},
+	"orman": {"name": "ORMAN PATİKASI", "friction": 0.9, "bumps": 1.7, "amp": 1.0, "feat": 1.0, "surface": Color(0.27, 0.4, 0.2), "under": Color(0.2, 0.15, 0.1)},
+	"camur": {"name": "ÇAMURLU YOL", "friction": 0.5, "bumps": 0.8, "amp": 0.9, "feat": 0.9, "surface": Color(0.33, 0.24, 0.16), "under": Color(0.22, 0.15, 0.1)},
+	"kar": {"name": "KARLI YOL", "friction": 0.33, "bumps": 0.7, "amp": 1.1, "feat": 1.0, "surface": Color(0.95, 0.97, 1.0), "under": Color(0.75, 0.82, 0.9)},
+}
+var _roads: Dictionary = {}     # yol kesimi no -> tür
+var _road_mats: Dictionary = {}
+
+
+func road_at_index(idx: int) -> String:
+	if _roads.has(idx):
+		return _roads[idx]
+	var kind: String = "asfalt"
+	if idx < 2:
+		kind = "asfalt"            # ilk 500 m asfalt: rahat başlangıç
+	elif idx < 4:
+		kind = "toprak"
+	else:
+		var r := RandomNumberGenerator.new()
+		r.seed = hash("yol:%d:%d" % [_seed, idx])
+		var d: float = difficulty_at((float(idx) + 0.5) * road_len_m * PX_PER_M)
+		var kinds: Array = ["asfalt", "toprak", "dag", "orman", "camur", "kar"]
+		var w: Array = [maxf(1.6 - d * 1.4, 0.2), 1.4, 0.4 + d * 1.6, 0.7 + d * 0.8, 0.25 + d * 1.2, d * 1.5]
+		var prev: String = road_at_index(idx - 1)
+		var total: float = 0.0
+		for i in range(kinds.size()):
+			if kinds[i] == prev:
+				w[i] = float(w[i]) * 0.25   # aynı yol art arda pek gelmesin
+			total += float(w[i])
+		var pick: float = r.randf() * total
+		for i in range(kinds.size()):
+			pick -= float(w[i])
+			if pick <= 0.0:
+				kind = kinds[i]
+				break
+	_roads[idx] = kind
+	return kind
+
+
+func road_at(x: float) -> String:
+	return road_at_index(floori(x / (road_len_m * PX_PER_M)))
+
+
+## Yol özelliği (geçişlerde 300 px yumuşak karışım, arazi kopmasın)
+func road_factor(x: float, key: String) -> float:
+	var L: float = road_len_m * PX_PER_M
+	var idx: int = floori(x / L)
+	var t: float = x - float(idx) * L
+	var cur: float = float(ROADS[road_at_index(idx)][key])
+	if t < 150.0:
+		var prv: float = float(ROADS[road_at_index(idx - 1)][key])
+		return lerpf(prv, cur, smoothstep(-150.0, 150.0, t))
+	if t > L - 150.0:
+		var nxt: float = float(ROADS[road_at_index(idx + 1)][key])
+		return lerpf(cur, nxt, smoothstep(-150.0, 150.0, t - L))
+	return cur
+
+
+func road_color(x: float, key: String) -> Color:
+	var L: float = road_len_m * PX_PER_M
+	var idx: int = floori(x / L)
+	var t: float = x - float(idx) * L
+	var cur: Color = ROADS[road_at_index(idx)][key]
+	if t < 60.0:
+		return (ROADS[road_at_index(idx - 1)][key] as Color).lerp(cur, smoothstep(-60.0, 60.0, t))
+	if t > L - 60.0:
+		return cur.lerp(ROADS[road_at_index(idx + 1)][key], smoothstep(-60.0, 60.0, t - L))
+	return cur
+
+
 ## Yol kesimi türleri ve uyarı tabelaları
 const SIGNS := {"bumps": "TÜMSEKLİ YOL", "steep": "DİK YOKUŞ", "ramp": "RAMPA!", "rocky": "KAYALIK", "valley": "ÇUKUR"}
 
@@ -79,11 +155,11 @@ func difficulty_at(x: float) -> float:
 
 func _raw_height(x: float) -> float:
 	var d: float = difficulty_at(x)
-	var amp: float = lerpf(55.0, 320.0, d)        # tepe yüksekliği artar
+	var amp: float = lerpf(55.0, 320.0, d) * road_factor(x, "amp")   # tepe yüksekliği artar
 	var stretch: float = lerpf(1.0, 1.6, d)       # tepeler sıklaşır = daha dik
 	var big: float = _noise.get_noise_1d(x * stretch)
-	var bumps: float = _detail.get_noise_1d(x) * lerpf(3.0, 28.0, d)  # engebe artar
-	return base_y - big * amp + bumps + _feature_offset(x)
+	var bumps: float = _detail.get_noise_1d(x) * lerpf(3.0, 28.0, d) * road_factor(x, "bumps")  # engebe artar
+	return base_y - big * amp + bumps + _feature_offset(x) * road_factor(x, "feat")
 
 
 ## Kesim kesim yol karakteri: mesafe arttıkça zor kesimler hem sıklaşır hem büyür
@@ -236,7 +312,13 @@ func _build_chunk(i: int) -> Node2D:
 	var body := StaticBody2D.new()
 	body.collision_layer = 1
 	body.collision_mask = 0
-	body.physics_material_override = _ground_mat
+	var rk: String = road_at(x0 + chunk_width * 0.5)
+	if not _road_mats.has(rk):
+		var pm := PhysicsMaterial.new()
+		pm.friction = float(ROADS[rk]["friction"])
+		pm.bounce = 0.0
+		_road_mats[rk] = pm
+	body.physics_material_override = _road_mats[rk]
 	var col := CollisionPolygon2D.new()
 	col.build_mode = CollisionPolygon2D.BUILD_SEGMENTS   # düz alanlarda da sorunsuz
 	col.polygon = poly
@@ -314,9 +396,10 @@ func _build_chunk(i: int) -> Node2D:
 	var gdark := PackedColorArray()
 	for k in range(0, top.size(), 4):
 		offs.append(float(k) / float(top.size() - 1))
-		var zc: Color = zone_colors_at(top[k].x)[0]
+		var rx: float = top[k].x
+		var zc: Color = zone_colors_at(rx)[0] if road_at(rx) == "toprak" else road_color(rx, "surface")
 		gcols.append(zc)
-		gdark.append(zc.darkened(0.42))
+		gdark.append(road_color(rx, "under") if road_at(rx) != "toprak" else zc.darkened(0.42))
 	gg.offsets = offs
 	gg.colors = gcols
 	var gd := Gradient.new()
@@ -343,14 +426,19 @@ func _build_chunk(i: int) -> Node2D:
 	var tx: float = x0
 	while tx < x0 + chunk_width:
 		tx += tr.randf_range(30.0, 90.0)
+		var rkt: String = road_at(tx)
+		if rkt == "asfalt" or rkt == "kar" or rkt == "camur":
+			continue
 		var ty: float = height_at(tx)
-		var gc: Color = zone_colors_at(tx)[0]
+		var gc: Color = zone_colors_at(tx)[0] if rkt != "orman" else Color(0.22, 0.45, 0.18)
 		var tuft := Polygon2D.new()
 		var hh: float = tr.randf_range(7.0, 14.0)
 		tuft.polygon = PackedVector2Array([Vector2(-7, 2), Vector2(-5, -hh * 0.7), Vector2(-2, 0), Vector2(0, -hh), Vector2(2, 0), Vector2(5, -hh * 0.8), Vector2(7, 2)])
 		tuft.position = Vector2(tx, ty - 2)
 		tuft.color = gc.darkened(tr.randf_range(0.0, 0.25))
 		root.add_child(tuft)
+
+	_build_road_decor(root, x0, top, i)
 
 	# --- uyarı tabelaları ve kayalar ---
 	var L: float = feature_len_m * PX_PER_M
@@ -435,6 +523,158 @@ func _build_station(root: Node2D, k: int, cx: float) -> void:
 	flag.color = Color(0.1, 0.75, 0.35)
 	st.add_child(flag)
 	_add_label(st, "TESLİMAT\n%d m" % int(k * checkpoint_interval_m), Vector2(-110, -380), 30)
+
+
+## Yol türüne göre süslemeler: asfalt şerit + bariyer, orman çam ağaçları, dağ kayaları,
+## çamur gölcükleri, kar tümsekleri, toprak yol tekerlek izleri. Her yol başında mavi tabela.
+func _build_road_decor(root: Node2D, x0: float, top: PackedVector2Array, ci: int) -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = hash("susler:%d:%d" % [_seed, ci])
+	var L: float = road_len_m * PX_PER_M
+	# yol tabelası
+	for ri in range(floori(x0 / L), floori((x0 + chunk_width) / L) + 1):
+		var sx: float = float(ri) * L + 120.0
+		if sx >= x0 and sx < x0 + chunk_width and ri > 0 and _flat_weight(sx) < 0.5:
+			_build_road_sign(root, sx, String(ROADS[road_at_index(ri)]["name"]))
+	# asfalt: kesik şerit çizgisi + bariyer
+	var k: int = 0
+	while k < top.size() - 1:
+		var p0: Vector2 = top[k]
+		var rk: String = road_at(p0.x)
+		match rk:
+			"asfalt":
+				if k % 3 == 0 and k + 1 < top.size():
+					var dash := Line2D.new()
+					dash.points = PackedVector2Array([top[k] + Vector2(0, 3), top[k + 1] + Vector2(-8, 3)])
+					dash.width = 3.0
+					dash.default_color = Color(0.95, 0.93, 0.8)
+					root.add_child(dash)
+				if k % 4 == 0:
+					var post := Line2D.new()
+					post.points = PackedVector2Array([p0 + Vector2(0, 2), p0 + Vector2(0, -26)])
+					post.width = 4.0
+					post.default_color = Color(0.55, 0.57, 0.6)
+					post.z_index = -1
+					root.add_child(post)
+					if k + 4 < top.size():
+						var rail := Line2D.new()
+						rail.points = PackedVector2Array([p0 + Vector2(0, -22), top[k + 4] + Vector2(0, -22)])
+						rail.width = 5.0
+						rail.default_color = Color(0.78, 0.8, 0.83)
+						rail.z_index = -1
+						root.add_child(rail)
+			"toprak":
+				if r.randf() < 0.35:
+					var rut := Line2D.new()
+					rut.points = PackedVector2Array([p0 + Vector2(0, 4), p0 + Vector2(r.randf_range(10, 22), 4.5)])
+					rut.width = 2.0
+					rut.default_color = Color(0.4, 0.28, 0.18, 0.8)
+					root.add_child(rut)
+			"orman":
+				if r.randf() < 0.22:
+					_build_pine(root, p0 + Vector2(0, 4), r)
+				if r.randf() < 0.25:
+					var root_ln := Line2D.new()
+					root_ln.points = PackedVector2Array([p0 + Vector2(-8, 2), p0 + Vector2(0, -3), p0 + Vector2(10, 1)])
+					root_ln.width = 3.0
+					root_ln.default_color = Color(0.32, 0.22, 0.14)
+					root.add_child(root_ln)
+			"dag":
+				if r.randf() < 0.12:
+					var boulder := Polygon2D.new()
+					var br: float = r.randf_range(18.0, 40.0)
+					var bp := PackedVector2Array()
+					for q in range(8):
+						var a: float = PI + PI * float(q) / 7.0
+						bp.append(Vector2(cos(a), sin(a)) * br * r.randf_range(0.8, 1.15))
+					boulder.polygon = bp
+					boulder.position = p0 + Vector2(0, 8)
+					boulder.color = Color(0.45, 0.44, 0.43).darkened(r.randf_range(0.0, 0.2))
+					boulder.z_index = -1
+					root.add_child(boulder)
+			"camur":
+				if r.randf() < 0.18:
+					var pud := Polygon2D.new()
+					var pw: float = r.randf_range(22.0, 50.0)
+					var pp := PackedVector2Array()
+					for q in range(12):
+						var a2: float = TAU * float(q) / 12.0
+						pp.append(Vector2(cos(a2) * pw, sin(a2) * 4.0))
+					pud.polygon = pp
+					pud.position = p0 + Vector2(0, 2)
+					pud.color = Color(0.35, 0.3, 0.26, 0.85)
+					root.add_child(pud)
+					var shine := Line2D.new()
+					shine.points = PackedVector2Array([p0 + Vector2(-pw * 0.5, 1), p0 + Vector2(-pw * 0.1, 1)])
+					shine.width = 1.5
+					shine.default_color = Color(0.85, 0.9, 1.0, 0.6)
+					root.add_child(shine)
+			"kar":
+				if r.randf() < 0.2:
+					var drift := Polygon2D.new()
+					var dw: float = r.randf_range(16.0, 34.0)
+					var dp := PackedVector2Array()
+					for q in range(9):
+						var a3: float = PI + PI * float(q) / 8.0
+						dp.append(Vector2(cos(a3) * dw, sin(a3) * dw * 0.4))
+					drift.polygon = dp
+					drift.position = p0 + Vector2(0, 3)
+					drift.color = Color(1, 1, 1)
+					root.add_child(drift)
+		k += 1
+
+
+func _build_pine(root: Node2D, p: Vector2, r: RandomNumberGenerator) -> void:
+	var tree := Node2D.new()
+	tree.position = p
+	tree.z_index = -2
+	var sc: float = r.randf_range(0.8, 1.4)
+	tree.scale = Vector2(sc, sc)
+	var trunk := Polygon2D.new()
+	trunk.polygon = PackedVector2Array([Vector2(-5, 0), Vector2(5, 0), Vector2(4, -40), Vector2(-4, -40)])
+	trunk.color = Color(0.35, 0.24, 0.15)
+	tree.add_child(trunk)
+	var g: Color = Color(0.13, 0.36, 0.2).darkened(r.randf_range(0.0, 0.2))
+	for t in range(3):
+		var w: float = 38.0 - float(t) * 9.0
+		var y0: float = -28.0 - float(t) * 30.0
+		var tri := Polygon2D.new()
+		tri.polygon = PackedVector2Array([Vector2(-w, y0), Vector2(w, y0), Vector2(0, y0 - 46.0)])
+		tri.color = g.lightened(float(t) * 0.06)
+		tree.add_child(tri)
+	root.add_child(tree)
+
+
+func _build_road_sign(root: Node2D, x: float, text: String) -> void:
+	var y: float = height_at(x)
+	var sg := Node2D.new()
+	sg.position = Vector2(x, y)
+	sg.z_index = -1
+	root.add_child(sg)
+	var pole := Line2D.new()
+	pole.points = PackedVector2Array([Vector2(0, 4), Vector2(0, -120)])
+	pole.width = 6.0
+	pole.default_color = Color(0.55, 0.57, 0.6)
+	sg.add_child(pole)
+	var board := Polygon2D.new()
+	board.polygon = PackedVector2Array([Vector2(-80, -170), Vector2(80, -170), Vector2(80, -118), Vector2(-80, -118)])
+	board.color = Color(0.1, 0.3, 0.7)
+	sg.add_child(board)
+	var frame := Line2D.new()
+	frame.points = PackedVector2Array([Vector2(-76, -166), Vector2(76, -166), Vector2(76, -122), Vector2(-76, -122), Vector2(-76, -166)])
+	frame.width = 2.5
+	frame.default_color = Color.WHITE
+	sg.add_child(frame)
+	var lb := Label.new()
+	lb.text = text
+	lb.position = Vector2(-80, -166)
+	lb.custom_minimum_size = Vector2(160, 44)
+	lb.size = Vector2(160, 44)
+	lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lb.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lb.add_theme_font_size_override("font_size", 17)
+	lb.add_theme_color_override("font_color", Color.WHITE)
+	sg.add_child(lb)
 
 
 func _flat_weight(x: float) -> float:

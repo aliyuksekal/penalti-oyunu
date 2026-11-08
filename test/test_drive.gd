@@ -183,6 +183,27 @@ func _systems() -> void:
 		kinds[k] = int(kinds.get(k, 0)) + 1
 	print("  kesimler (ilk 3 km): ", kinds)
 	_check(kinds.size() >= 4, "en az 4 farklı yol türü var")
+	var roads := {}
+	for i in range(60):
+		roads[tg.road_at_index(i)] = true
+	print("  yol türleri: ", roads.keys())
+	_check(tg.road_at_index(0) == "asfalt" and tg.road_at_index(1) == "asfalt", "ilk 500 m asfalt")
+	_check(roads.size() >= 5, "en az 5 yol türü çıkıyor (%d)" % roads.size())
+	var CT = load("res://CargoTypes.gd")
+	var rr := RandomNumberGenerator.new()
+	rr.seed = 3
+	var p1: Array = CT.load_plan(1, rr)
+	var p6: Array = CT.load_plan(7, rr)
+	_check(p1.size() == 5 and p6.size() >= 6 and p6.has("tomruk"), "yük artıyor: 1. teslimat %d, 7. teslimat %d parça %s" % [p1.size(), p6.size(), str(p6)])
+	for leg in range(1, 9):
+		var kinds2: Array = CT.load_plan(leg, rr)
+		var pos2: Array = CT.pack(kinds2)
+		var ok_fit: bool = true
+		for q in range(pos2.size()):
+			var sz2: Vector2 = CT.TYPES[kinds2[q]]["size"]
+			if pos2[q].x - sz2.x * 0.5 < -107.0 or pos2[q].x + sz2.x * 0.5 > 23.0:
+				ok_fit = false
+		_check(ok_fit, "%d. yük kasaya sığıyor (%d parça)" % [leg, kinds2.size()])
 	var h_early: float = 0.0
 	var h_late: float = 0.0
 	for i in range(3, 8):
@@ -290,7 +311,7 @@ func _shots() -> void:
 	# açılış animasyonu kareleri
 	main._play_intro()
 	var prev_t: float = 0.0
-	for tt in [0.5, 1.3, 1.75, 2.05]:
+	for tt in [0.4, 1.0, 1.7, 2.05]:
 		await _wait(tt - prev_t)
 		prev_t = tt
 		await _shot("intro_%d.png" % int(tt * 100))

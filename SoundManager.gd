@@ -3,11 +3,18 @@ extends Node
 ## ayrı ayrı açılıp kapatılır. Tüm sesler tools/make_audio.py ile sıfırdan sentezlendi.
 
 const MUSIC_FILES := {"garaj": "res://audio/muzik_garaj.wav", "yol": "res://audio/muzik_yol.wav"}
-const SFX_FILES := ["yuk_dustu", "teslimat", "oyun_bitti", "tik", "inis", "hararet", "satin_al", "turbo", "bip"]
+const SFX_FILES := ["yuk_dustu", "teslimat", "oyun_bitti", "tik", "inis", "hararet", "satin_al", "turbo", "bip", "patlama"]
+## Dizel motor: üç devirde kaydedilmiş döngü, devre göre karıştırılır (650 / 1350 / 2200 d/d)
+const ENGINE_FILES := ["res://audio/motor_rolanti.wav", "res://audio/motor_orta.wav", "res://audio/motor_yuksek.wav"]
+const ENGINE_RPM := [650.0, 1350.0, 2200.0]
 
 var MUSIC: Dictionary = {}
 var SFX: Dictionary = {}
-var ENGINE: AudioStream
+var _layers: Array[AudioStreamPlayer] = []
+var _rev: float = 0.0        # 0 = rölanti .. 1 = yüksek devir (yumuşatılmış)
+var _blip: float = 0.0       # ara gaz
+var _pop_ready: bool = false
+var _active: bool = false
 
 var music_on: bool = true
 var sfx_on: bool = true
@@ -27,22 +34,25 @@ func _ready() -> void:
 		MUSIC[k] = load(MUSIC_FILES[k])
 	for n in SFX_FILES:
 		SFX[n] = load("res://audio/%s.wav" % n)
-	ENGINE = load("res://audio/motor.wav")
 	for s in MUSIC.values():
 		_make_loop(s)
-	_make_loop(ENGINE)
 
 	_music = AudioStreamPlayer.new()
 	_music.bus = "Muzik"
 	_music.volume_db = -6.0
 	add_child(_music)
 
-	_engine = AudioStreamPlayer.new()
-	_engine.bus = "Efekt"
-	_engine.stream = ENGINE
-	_engine.volume_db = -30.0
-	_engine.process_mode = Node.PROCESS_MODE_PAUSABLE   # oyun duraklayınca motor susar
-	add_child(_engine)
+	for f in ENGINE_FILES:
+		var st: AudioStream = load(f)
+		_make_loop(st)
+		var p := AudioStreamPlayer.new()
+		p.bus = "Efekt"
+		p.stream = st
+		p.volume_db = -60.0
+		p.process_mode = Node.PROCESS_MODE_PAUSABLE   # oyun duraklayınca motor susar
+		add_child(p)
+		_layers.append(p)
+	_engine = _layers[1]
 
 	for i in range(6):
 		var p := AudioStreamPlayer.new()
@@ -97,18 +107,50 @@ func sfx(sfx_name: String, volume_db: float = 0.0, pitch: float = 1.0) -> void:
 			return
 
 
+## Ara gaz: gaza hızlı hızlı basınca motor bir anda kükreyip düşer (eski kamyon usulü)
+func blip() -> void:
+	if not _active or not sfx_on:
+		return
+	_blip = 1.0
+	_pop_ready = true
+
+
 ## Motor: rpm 0..1 (teker devri), throttle 0..1 (gaz). active=false -> sus
 func engine(active: bool, rpm: float, throttle: float, delta: float) -> void:
+	_active = active
 	if not active:
-		if _engine.playing:
-			_engine.volume_db = move_toward(_engine.volume_db, -40.0, delta * 60.0)
-			if _engine.volume_db <= -39.0:
-				_engine.stop()
+		for p in _layers:
+			if p.playing:
+				p.volume_db = move_toward(p.volume_db, -60.0, delta * 80.0)
+				if p.volume_db <= -59.0:
+					p.stop()
 		return
-	if not _engine.playing:
-		_engine.volume_db = -30.0
-		_engine.play()
-	var target_pitch: float = 0.72 + clampf(rpm, 0.0, 1.0) * 1.25 + throttle * 0.22
-	_engine.pitch_scale = lerpf(_engine.pitch_scale, target_pitch, clampf(delta * 4.0, 0.0, 1.0))
-	var target_db: float = lerpf(-17.0, -5.0, clampf(0.35 * rpm + 0.65 * throttle, 0.0, 1.0))
-	_engine.volume_db = lerpf(_engine.volume_db, target_db, clampf(delta * 5.0, 0.0, 1.0))
+	for p in _layers:
+		if not p.playing:
+			p.volume_db = -60.0
+			p.play()
+	var target: float = clampf(maxf(rpm, throttle * 0.42), 0.0, 1.0)
+	# devir gaza hızlı çıkar, yavaş düşer (motorun ataleti)
+	var k: float = 3.5 if target > _rev else 1.6
+	_rev = lerpf(_rev, target, clampf(delta * k, 0.0, 1.0))
+	_blip = maxf(_blip - delta * 2.4, 0.0)
+	if _pop_ready and _blip < 0.35 and throttle < 0.1:
+		_pop_ready = false
+		if randf() < 0.6:
+			sfx("patlama", -7.0, randf_range(0.9, 1.15))
+	var e: float = clampf(_rev + _blip * 0.75, 0.0, 1.25)
+	var cur_rpm: float = 650.0 + e * 1650.0
+	var master_db: float = lerpf(-15.0, -3.0, clampf(0.45 * e + 0.55 * maxf(throttle, _blip), 0.0, 1.0))
+	for i in range(_layers.size()):
+		var anchor: float = float(ENGINE_RPM[i])
+		var w: float = 0.0
+		if i == 0:
+			w = clampf(1.0 - (cur_rpm - 650.0) / 700.0, 0.0, 1.0)
+		elif i == 1:
+			w = clampf(1.0 - absf(cur_rpm - 1350.0) / (700.0 if cur_rpm < 1350.0 else 850.0), 0.0, 1.0)
+		else:
+			w = clampf((cur_rpm - 1350.0) / 850.0, 0.0, 1.0)
+		var p: AudioStreamPlayer = _layers[i]
+		p.pitch_scale = clampf(cur_rpm / anchor, 0.7, 1.45)
+		var db: float = master_db + linear_to_db(maxf(w, 0.001))
+		p.volume_db = lerpf(p.volume_db, db, clampf(delta * 10.0, 0.0, 1.0))

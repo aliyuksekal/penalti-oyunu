@@ -10,6 +10,8 @@ const SAVE_PATH := "user://kargo_kayit.cfg"
 const MAX_LEVEL := 10
 
 const TruckCatalog = preload("res://TruckCatalog.gd")
+const TruckArt = preload("res://TruckArt.gd")
+const CargoTypes = preload("res://CargoTypes.gd")
 const MenuScreen = preload("res://MenuScreen.gd")
 const AdService = preload("res://AdService.gd")
 const SoundManager = preload("res://SoundManager.gd")
@@ -49,6 +51,7 @@ var gold_run: int = 0
 var total_gold: int = 0
 var best_m: float = 0.0
 var tokens: int = 0
+var cargo_total: int = 5          # bu teslimatta yüklenen yük sayısı
 var dev_mode: bool = false        # geliştirici modu: tüm kamyonlar seçilebilir
 var owned: Array = ["tosun"]
 var selected: String = "tosun"
@@ -84,6 +87,9 @@ var _prev_overheat: bool = false
 var _crash_cd: Dictionary = {}   # yük -> son çarpma sesi zamanı
 var time_left: float = 0.0
 var _brake_hold: float = 0.0
+var _prev_gas: bool = false
+var _last_road: String = ""
+var _gas_release_t: float = -10.0
 var _beep_t: float = 0.0
 var _last_sec: int = -1
 var turbo_btn: TurboButton
@@ -253,8 +259,9 @@ func _ready() -> void:
 			_play_intro()
 
 
-## Açılış animasyonu: logo belirir, motor kükrer, kamyon (logo) burnunun baktığı yöne,
-## sol üste doğru gazlayıp fırlar; ardından oyun açılır. Dokununca atlanır.
+## Açılış animasyonu: simgedeki sahne (gece, yokuş, sandıklı kamyon) belirir; kamyon tozlu yolda
+## patinaj çekip tekerlerini boşa döndürür, sonra tutunup sola-yukarı gazlayarak simgeden çıkar.
+## Ardından oyun açılır. Dokununca atlanır.
 static var intro_done: bool = false
 
 
@@ -263,49 +270,143 @@ func _play_intro() -> void:
 	layer.layer = 60
 	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(layer)
+	var bgc := Color(0.08, 0.08, 0.18)
 	var bg := ColorRect.new()
-	bg.color = Color(0.08, 0.08, 0.18)
+	bg.color = bgc
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	layer.add_child(bg)
 	var vp: Vector2 = get_viewport().get_visible_rect().size
-	var lsz: float = minf(vp.x, vp.y) * 0.48
-	var logo := TextureRect.new()
-	logo.texture = load("res://icons/logo_rounded_1024.png")
-	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	logo.size = Vector2(lsz, lsz)
-	logo.pivot_offset = logo.size * 0.5
-	logo.position = vp * 0.5 - logo.size * 0.5 - Vector2(0, lsz * 0.12)
-	logo.modulate.a = 0.0
-	logo.scale = Vector2(0.6, 0.6)
-	bg.add_child(logo)
+	var isz: float = minf(vp.x, vp.y) * 0.56
+	# simge çerçevesi: içindeki sahne kırpılır (köşeler arka plan rengiyle yuvarlatılır)
+	var icon := Control.new()
+	icon.size = Vector2(isz, isz)
+	icon.position = vp * 0.5 - icon.size * 0.5 - Vector2(0, isz * 0.12)
+	icon.pivot_offset = icon.size * 0.5
+	icon.clip_contents = true
+	icon.scale = Vector2(0.7, 0.7)
+	icon.modulate.a = 0.0
+	bg.add_child(icon)
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
+	g.colors = PackedColorArray([Color(0.12, 0.12, 0.3), Color(0.33, 0.2, 0.33), Color(0.93, 0.45, 0.3)])
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill_to = Vector2(0, 1)
+	gt.width = 8
+	gt.height = 128
+	var sky := TextureRect.new()
+	sky.texture = gt
+	sky.stretch_mode = TextureRect.STRETCH_SCALE
+	sky.size = icon.size
+	icon.add_child(sky)
+	var world := Node2D.new()
+	icon.add_child(world)
+	# yamaç: sola doğru yükselen koyu tepe (simgedeki gibi)
+	var y_left: float = isz * 0.6
+	var y_right: float = isz * 0.86
+	var hill := Polygon2D.new()
+	hill.polygon = PackedVector2Array([Vector2(-10, y_left), Vector2(isz * 0.35, y_left + (y_right - y_left) * 0.3 - 6), Vector2(isz * 0.7, y_left + (y_right - y_left) * 0.72), Vector2(isz + 10, y_right), Vector2(isz + 10, isz + 10), Vector2(-10, isz + 10)])
+	hill.color = Color(0.07, 0.06, 0.12)
+	world.add_child(hill)
+	# kamyon: simgedeki gibi koyu gövde, altın sandıklar, sola-yukarı bakar
+	var d: Dictionary = {"cab": "offroad", "wheel_r": 32.0, "body": Color(0.34, 0.2, 0.22), "accent": Color(0.12, 0.1, 0.14),
+		"bed": Color(0.13, 0.11, 0.16), "rim": Color(0.25, 0.25, 0.3), "tread": "offroad", "extras": ["stack", "lightbar"]}
+	var truck_node := Node2D.new()
+	var sc: float = isz / 430.0
+	truck_node.scale = Vector2(-sc, sc)     # aynalı: burnu sola
+	var slope: float = atan2(y_right - y_left, isz)
+	truck_node.rotation = slope              # burun yukarı
+	var start := Vector2(isz * 0.56, y_left + (y_right - y_left) * 0.56 - 68.0 * sc)
+	truck_node.position = start
+	world.add_child(truck_node)
+	var body_n := Node2D.new()
+	truck_node.add_child(body_n)
+	TruckArt.paint_body(body_n, d, 32.0, 36.0)
+	for c in [Vector2(-86, -34), Vector2(-50, -34), Vector2(-14, -34), Vector2(-66, -64)]:
+		var crate := Polygon2D.new()
+		crate.polygon = PackedVector2Array([c + Vector2(-16, -14), c + Vector2(16, -14), c + Vector2(16, 14), c + Vector2(-16, 14)])
+		crate.color = Color(0.9, 0.66, 0.26)
+		crate.z_index = 1
+		body_n.add_child(crate)
+		var cl := Line2D.new()
+		cl.points = PackedVector2Array([c + Vector2(-16, -14), c + Vector2(16, -14), c + Vector2(16, 14), c + Vector2(-16, 14), c + Vector2(-16, -14), c + Vector2(16, 14)])
+		cl.width = 3.0
+		cl.default_color = Color(0.6, 0.4, 0.15)
+		cl.z_index = 1
+		body_n.add_child(cl)
+	var wheels_n: Array = []
+	for side in [-1.0, 1.0]:
+		var w := Node2D.new()
+		w.position = Vector2(78.0 * side, 36.0)
+		w.z_index = 2
+		truck_node.add_child(w)
+		TruckArt.paint_wheel(w, d, 32.0)
+		wheels_n.append(w)
+	# toz: arka tekerden (ekranda sağ alt) yumuşak bulutlar
+	var puff_g := Gradient.new()
+	puff_g.set_color(0, Color(1, 1, 1, 1))
+	puff_g.set_color(1, Color(1, 1, 1, 0))
+	var puff := GradientTexture2D.new()
+	puff.gradient = puff_g
+	puff.fill = GradientTexture2D.FILL_RADIAL
+	puff.fill_from = Vector2(0.5, 0.5)
+	puff.fill_to = Vector2(1.0, 0.5)
+	puff.width = 32
+	puff.height = 32
+	var dust := CPUParticles2D.new()
+	dust.texture = puff
+	dust.amount = 60
+	dust.lifetime = 1.1
+	dust.local_coords = false
+	dust.direction = Vector2(1, -0.35)
+	dust.spread = 28.0
+	dust.initial_velocity_min = 60.0 * sc * 2.0
+	dust.initial_velocity_max = 220.0 * sc * 2.0
+	dust.gravity = Vector2(0, -15)
+	dust.damping_min = 40.0
+	dust.damping_max = 90.0
+	dust.scale_amount_min = 0.6 * sc * 2.0
+	dust.scale_amount_max = 1.8 * sc * 2.0
+	var fade := Gradient.new()
+	fade.set_color(0, Color(0.98, 0.66, 0.5, 0.85))
+	fade.set_color(1, Color(0.7, 0.45, 0.45, 0.0))
+	dust.color_ramp = fade
+	dust.emitting = false
+	world.add_child(dust)
+	# köşe yuvarlatma
+	var rr: float = isz * 0.16
+	for corner in [Vector2(0, 0), Vector2(isz, 0), Vector2(isz, isz), Vector2(0, isz)]:
+		var cx: float = rr if corner.x == 0.0 else isz - rr
+		var cy: float = rr if corner.y == 0.0 else isz - rr
+		var pts := PackedVector2Array([corner])
+		var a0: float = atan2(corner.y - cy, corner.x - cx) - PI * 0.25
+		for q in range(9):
+			var a: float = a0 + PI * 0.5 * float(q) / 8.0
+			pts.append(Vector2(cx, cy) + Vector2(cos(a), sin(a)) * rr)
+		var m := Polygon2D.new()
+		m.polygon = pts
+		m.color = bgc
+		m.z_index = 5
+		icon.add_child(m)
 	var title := _label(bg, "DROP ZERO", 64)
 	title.add_theme_color_override("font_color", Color(1.0, 0.62, 0.15))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.size = Vector2(vp.x, 80)
-	title.position = Vector2(0, logo.position.y + lsz + 14)
+	title.position = Vector2(0, icon.position.y + isz + 14)
 	title.modulate.a = 0.0
 	var sub := _label(bg, "Heavy Hauler", 32)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.size = Vector2(vp.x, 50)
 	sub.position = Vector2(0, title.position.y + 74)
 	sub.modulate.a = 0.0
-	# toz bulutu (arka tekerden)
-	var dust := CPUParticles2D.new()
-	dust.position = logo.position + Vector2(lsz * 0.72, lsz * 0.78)
-	dust.amount = 40
-	dust.lifetime = 0.7
-	dust.direction = Vector2(1, 0.3)
-	dust.spread = 35.0
-	dust.initial_velocity_min = 120.0
-	dust.initial_velocity_max = 320.0
-	dust.gravity = Vector2(0, 260)
-	dust.scale_amount_min = 4.0
-	dust.scale_amount_max = 10.0
-	dust.color = Color(0.85, 0.55, 0.4, 0.8)
-	dust.emitting = false
-	bg.add_child(dust)
+	# motor sesi (yüksek devir döngüsü, perdesi yükselir)
+	var roar := AudioStreamPlayer.new()
+	roar.bus = "Efekt"
+	roar.stream = load("res://audio/motor_yuksek.wav")
+	roar.volume_db = -60.0
+	roar.pitch_scale = 0.75
+	layer.add_child(roar)
 
 	var done := {"v": false}
 	var finish := func() -> void:
@@ -314,6 +415,7 @@ func _play_intro() -> void:
 		done["v"] = true
 		var tf := create_tween()
 		tf.tween_property(bg, "modulate:a", 0.0, 0.35)
+		tf.parallel().tween_property(roar, "volume_db", -60.0, 0.35)
 		tf.tween_callback(layer.queue_free)
 	var on_tap := func(e: InputEvent) -> void:
 		if (e is InputEventMouseButton or e is InputEventScreenTouch) and e.is_pressed():
@@ -322,34 +424,42 @@ func _play_intro() -> void:
 
 	var tw := create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(logo, "modulate:a", 1.0, 0.35)
-	tw.tween_property(logo, "scale", Vector2.ONE, 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_property(title, "modulate:a", 1.0, 0.4).set_delay(0.35)
-	tw.tween_property(sub, "modulate:a", 1.0, 0.4).set_delay(0.55)
+	tw.tween_property(icon, "modulate:a", 1.0, 0.3)
+	tw.tween_property(icon, "scale", Vector2.ONE, 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(title, "modulate:a", 1.0, 0.4).set_delay(0.3)
+	tw.tween_property(sub, "modulate:a", 1.0, 0.4).set_delay(0.5)
 	tw.set_parallel(false)
-	tw.tween_interval(0.45)
-	# motor kükrüyor: titreme + toz
-	var rev := func() -> void:
-		snd.sfx("turbo", 0.0, 0.8)
+	# patinaj: tekerler boşta döner, toz kalkar, motor kükrer
+	var spin := func() -> void:
 		dust.emitting = true
-	tw.tween_callback(rev)
-	for i in range(6):
-		tw.tween_property(logo, "rotation", (-0.03 if i % 2 == 0 else 0.02), 0.05)
-	# gazla ve git: burnunun baktığı yöne (sol üst)
-	tw.tween_callback(func() -> void: snd.sfx("turbo", 2.0, 1.2))
+		roar.play()
+		snd.sfx("turbo", -4.0, 0.7)
+	tw.tween_callback(spin)
 	tw.set_parallel(true)
-	tw.tween_property(logo, "position", logo.position + Vector2(-vp.x * 0.9, -vp.y * 0.75), 0.6).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_IN)
-	tw.tween_property(logo, "rotation", -0.35, 0.6).set_ease(Tween.EASE_IN)
-	tw.tween_property(logo, "scale", Vector2(0.55, 0.55), 0.6).set_ease(Tween.EASE_IN)
-	tw.tween_property(title, "modulate:a", 0.0, 0.5).set_delay(0.25)
-	tw.tween_property(sub, "modulate:a", 0.0, 0.5).set_delay(0.25)
+	tw.tween_property(roar, "volume_db", -4.0, 0.25)
+	tw.tween_property(roar, "pitch_scale", 1.25, 0.9)
+	for wn in wheels_n:
+		tw.tween_property(wn, "rotation", -TAU * 5.0, 0.9)
+	for q in range(6):
+		tw.tween_property(truck_node, "position", start + Vector2(0, (-2.0 if q % 2 == 0 else 1.5) * sc * 2.0), 0.07).set_delay(0.15 * float(q))
 	tw.set_parallel(false)
-	tw.tween_callback(func() -> void: dust.emitting = false)
+	# tutunur ve sola-yukarı gazlayıp simgeden çıkar
+	var go := func() -> void:
+		snd.sfx("patlama", -6.0, 1.0)
+	tw.tween_callback(go)
+	var dir := Vector2(-cos(slope), -sin(slope))
+	tw.set_parallel(true)
+	tw.tween_property(truck_node, "position", start + dir * isz * 1.25, 0.85).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	for wn in wheels_n:
+		tw.tween_property(wn, "rotation", -TAU * 9.0, 0.85)
+	tw.tween_property(roar, "pitch_scale", 1.4, 0.85)
+	tw.set_parallel(false)
+	var stop_dust := func() -> void:
+		dust.emitting = false
+	tw.tween_callback(stop_dust)
+	tw.tween_property(roar, "volume_db", -30.0, 0.5)
 	tw.tween_callback(finish)
 
-
-## Geliştirici modu (logoya 7 kez dokun + PIN): tüm kamyonlar satın almadan seçilir
-const DEV_PIN := "4848"
 
 
 func set_dev_mode(on: bool) -> void:
@@ -440,6 +550,13 @@ func _physics_process(delta: float) -> void:
 	var brk: bool = _pedal_down(brake_btn) or Input.is_physical_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_DOWN)
 	truck.gas_pressed = gas
 	truck.brake_pressed = brk and not gas
+	# ara gaz: gazı bırakıp hemen tekrar basınca motor kükrer
+	if gas and not _prev_gas:
+		if Time.get_ticks_msec() / 1000.0 - _gas_release_t < 0.45:
+			snd.blip()
+	elif not gas and _prev_gas:
+		_gas_release_t = Time.get_ticks_msec() / 1000.0
+	_prev_gas = gas
 	_brake_hold = _brake_hold + delta if truck.brake_pressed else 0.0
 	truck.brake_hold = _brake_hold
 	gas_btn.set_down(gas)
@@ -503,55 +620,36 @@ func _process(delta: float) -> void:
 
 
 # ======================= YÜKLER =======================
+## Kasayı yükle: her teslimatta yük listesi büyür ve çeşitlenir (CargoTypes.load_plan)
 func _spawn_cargo() -> void:
-	# 3 alt sıra + 2 üst sıra (üsttekiler kasa duvarından taşar: dikkatli sür!)
-	var slots: Array = [Vector2(-86, -34), Vector2(-42, -34), Vector2(2, -34), Vector2(-64, -62), Vector2(-20, -62)]
-	var colors: Array = [Color(0.72, 0.5, 0.26), Color(0.62, 0.42, 0.22), Color(0.8, 0.58, 0.3), Color(0.55, 0.62, 0.3), Color(0.35, 0.5, 0.72)]
-	for i in range(CARGO_COUNT):
-		var c := RigidBody2D.new()
-		c.name = "Yuk_%d" % i
-		c.mass = randf_range(0.32, 0.5)
-		c.collision_layer = 4
-		c.collision_mask = 1 | 2 | 4
-		c.continuous_cd = RigidBody2D.CCD_MODE_CAST_SHAPE
-		c.can_sleep = false
-		c.z_index = 1
+	var r := RandomNumberGenerator.new()
+	r.randomize()
+	var kinds: Array = CargoTypes.load_plan(next_cp, r)
+	var pos: Array = CargoTypes.pack(kinds)
+	cargo_total = kinds.size()
+	for i in range(kinds.size()):
+		var c: RigidBody2D = CargoTypes.make(String(kinds[i]), r)
 		c.contact_monitor = true
 		c.max_contacts_reported = 2
 		c.body_entered.connect(_on_cargo_hit.bind(c))
-		var m := PhysicsMaterial.new()
-		m.friction = 0.8
-		m.bounce = 0.05
-		c.physics_material_override = m
-		var size := Vector2(30, 26)
-		var cs := CollisionShape2D.new()
-		var rs := RectangleShape2D.new()
-		rs.size = size
-		cs.shape = rs
-		c.add_child(cs)
-		# sandık görünümü
-		var h: Vector2 = size * 0.5
-		var col: Color = colors[i % colors.size()]
-		var box := Polygon2D.new()
-		box.polygon = PackedVector2Array([Vector2(-h.x, -h.y), Vector2(h.x, -h.y), Vector2(h.x, h.y), Vector2(-h.x, h.y)])
-		box.color = col
-		c.add_child(box)
-		var frame := Line2D.new()
-		frame.points = PackedVector2Array([Vector2(-h.x, -h.y), Vector2(h.x, -h.y), Vector2(h.x, h.y), Vector2(-h.x, h.y), Vector2(-h.x, -h.y)])
-		frame.width = 3.0
-		frame.default_color = col.darkened(0.45)
-		c.add_child(frame)
-		var cross := Line2D.new()
-		cross.points = PackedVector2Array([Vector2(-h.x, -h.y), Vector2(h.x, h.y)])
-		cross.width = 2.5
-		cross.default_color = col.darkened(0.35)
-		c.add_child(cross)
 		add_child(c)
-		var slot: Vector2 = slots[i % slots.size()]
-		c.global_position = truck.bed_to_global(slot)
+		c.global_position = truck.bed_to_global(pos[i])
 		c.global_rotation = truck.body.global_rotation
 		c.linear_velocity = truck.body.linear_velocity
 		cargo.append(c)
+
+
+## Kalan yükleri kasaya yeniden diz (reklamla kurtarmada)
+func _repack_cargo() -> void:
+	var kinds: Array = []
+	for c in cargo:
+		kinds.append(String(c.get_meta("tur", "sandik")))
+	var pos: Array = CargoTypes.pack(kinds)
+	for i in range(cargo.size()):
+		var c: RigidBody2D = cargo[i]
+		c.global_transform = Transform2D(truck.body.global_rotation, truck.bed_to_global(pos[i]))
+		c.linear_velocity = Vector2.ZERO
+		c.angular_velocity = 0.0
 
 
 ## Sandık bir yere çarpınca: hızına göre "tak" sesi (kasada sallanırken de, yere düşünce de)
@@ -583,7 +681,7 @@ func _check_cargo(delta: float) -> void:
 			_out_time.erase(c)
 			dropped.append(c)
 			c.modulate = Color(1, 0.75, 0.75, 0.8)
-			_toast("Yük düştü! %d/%d" % [cargo.size(), CARGO_COUNT], 1.3)
+			_toast("%s düştü! %d/%d" % [CargoTypes.TYPES[String(c.get_meta("tur", "sandik"))]["name"], cargo.size(), cargo_total], 1.3)
 			snd.sfx("yuk_dustu", 0.0, 0.8)
 	# geride kalan düşmüş yükleri sil (bellek)
 	var bx: float = truck.body.global_position.x
@@ -608,8 +706,11 @@ func _check_checkpoint() -> void:
 		return
 	var intact: int = cargo.size()
 	var time_bonus: int = int(maxf(time_left, 0.0) / 2.0)
-	var reward: int = intact * gold_per_cargo + station_bonus * next_cp + time_bonus
-	if intact == CARGO_COUNT:
+	var cargo_value: int = 0
+	for c in cargo:
+		cargo_value += int(c.get_meta("deger", gold_per_cargo))
+	var reward: int = cargo_value + station_bonus * next_cp + time_bonus
+	if intact == cargo_total:
 		reward += perfect_bonus
 	gold_run += reward
 	delivered += intact
@@ -620,14 +721,14 @@ func _check_checkpoint() -> void:
 		c.queue_free()
 	cargo.clear()
 	_out_time.clear()
-	_spawn_cargo()
 	var msg: String = "TESLİMAT %d m!  %d sağlam yük  +%d altın (süre bonusu %d)\nYeni bölge: %s - yollar zorlaşıyor!" % [int(next_cp * terrain.checkpoint_interval_m), intact, reward, time_bonus, zone_name(next_cp + 1)]
-	if intact == CARGO_COUNT:
+	if intact == cargo_total:
 		msg = "KUSURSUZ! " + msg
 	_toast(msg, 3.0)
 	snd.sfx("teslimat")
 	next_cp += 1
 	time_left = _leg_time(next_cp)
+	_spawn_cargo()   # yeni (daha büyük) yük
 
 
 # ======================= OYUN SONU =======================
@@ -656,7 +757,7 @@ func _check_game_over(delta: float) -> void:
 			return
 
 	if cargo.is_empty():
-		_end("TÜM YÜKLER DÖKÜLDÜ", "Kasada hiç yük kalmadı (0/%d)." % CARGO_COUNT)
+		_end("TÜM YÜKLER DÖKÜLDÜ", "Kasada hiç yük kalmadı (0/%d)." % cargo_total)
 		return
 
 	if truck.body.global_position.y > terrain.base_y + 3000.0:
@@ -747,12 +848,7 @@ func _apply_rescue(kind: String) -> void:
 		var x: float = truck.body.global_position.x
 		truck.upright_at(Vector2(x, terrain.height_at(x) - 100.0 - (truck.wheel_r - 26.0)))
 		# kasada kalan yükleri yerine koy
-		var slots: Array = [Vector2(-86, -34), Vector2(-42, -34), Vector2(2, -34), Vector2(-64, -62), Vector2(-20, -62)]
-		for i in range(cargo.size()):
-			var c: RigidBody2D = cargo[i]
-			c.global_transform = Transform2D(0.0, truck.bed_to_global(slots[i % slots.size()]))
-			c.linear_velocity = Vector2.ZERO
-			c.angular_velocity = 0.0
+		_repack_cargo()
 		_out_time.clear()
 		flip_t = 0.0
 		_toast("Kamyon düzeltildi! Devam!", 1.6)
@@ -1182,7 +1278,7 @@ func _update_hud(delta: float) -> void:
 	fuel_bar.value = truck.fuel / maxf(truck.fuel_capacity, 1.0) * 100.0
 	speed_gauge.set_value(absf(truck.speed_kmh()), delta)
 	heat_gauge.set_value(truck.heat, delta)
-	cargo_lbl.text = "YÜK %d/%d" % [cargo.size(), CARGO_COUNT]
+	cargo_lbl.text = "YÜK %d/%d" % [cargo.size(), cargo_total]
 	cargo_lbl.add_theme_color_override("font_color", Color.WHITE if cargo.size() > 2 else Color(1, 0.45, 0.35))
 	dist_lbl.text = "%d m" % int(_distance_m())
 	gold_lbl.text = "ALTIN %d" % gold_run
@@ -1191,7 +1287,19 @@ func _update_hud(delta: float) -> void:
 	var tl: int = maxi(int(ceil(time_left)), 0)
 	timer_lbl.text = "SÜRE %d:%02d" % [tl / 60, tl % 60]
 	timer_lbl.add_theme_color_override("font_color", Color(1, 0.35, 0.3) if time_left < 15.0 else Color.WHITE)
-	zone_lbl.text = "Bölge %d: %s" % [next_cp, zone_name(next_cp)]
+	var rk: String = terrain.road_at(truck.body.global_position.x)
+	zone_lbl.text = "Bölge %d: %s   •   %s" % [next_cp, zone_name(next_cp), terrain.ROADS[rk]["name"]]
+	if rk != _last_road:
+		if _last_road != "":
+			var extra: String = ""
+			if rk == "camur" or rk == "kar":
+				extra = "\nKaygan! Yavaş ve dikkatli"
+			elif rk == "dag":
+				extra = "\nDik yokuşlar başlıyor"
+			elif rk == "asfalt":
+				extra = "\nRahat yol, gaza bas"
+			_toast(String(terrain.ROADS[rk]["name"]) + extra, 1.8)
+		_last_road = rk
 	turbo_btn.set_state(truck.turbo_charge, truck.turbo_active)
 
 	var warn: String = ""

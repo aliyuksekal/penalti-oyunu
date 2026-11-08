@@ -48,7 +48,7 @@ const UPGRADE_STEP := {"engine": 0.12, "stiffness": 0.10, "damping": 0.15, "grip
 @export var air_control: float = 3.2             # havada gövdeyi döndürme (rad/sn²)
 @export var fuel_use_idle: float = 0.35          # litre/sn rölanti
 @export var fuel_use_gas: float = 1.5            # litre/sn tam gaz (ek)
-@export var heat_rise: float = 5.5               # tam gazda hararet artışı (%/sn)
+@export var heat_rise: float = 3.2               # tam gazda hararet artışı (%/sn)
 @export var heat_fall: float = 11.0              # gaz bırakınca soğuma (%/sn)
 @export var overheat_cooldown: float = 3.0       # aşırı ısınınca motorun kesik kaldığı süre (sn)
 @export var base_zoom: float = 1.35
@@ -391,7 +391,7 @@ func _update_turbo(delta: float) -> void:
 	if turbo_active:
 		_turbo_t -= delta
 		body.apply_central_force(body.global_transform.x * body.mass * turbo_push)
-		heat = minf(heat + heat_rise * 0.9 * delta, 99.0)
+		heat = minf(heat + heat_rise * 0.6 * delta, 99.0)
 		fuel = maxf(fuel - fuel_use_gas * 0.6 * delta, 0.0)
 		if _turbo_t <= 0.0 or overheated or fuel <= 0.0:
 			turbo_active = false
@@ -475,7 +475,7 @@ func bed_to_global(local: Vector2) -> Vector2:
 ## Bir nokta hâlâ kasanın içinde mi? (biraz pay bırakılmış)
 func is_in_bed(world_pos: Vector2) -> bool:
 	var p: Vector2 = body.to_local(world_pos)
-	return p.x > BED_LEFT - 16.0 and p.x < BED_RIGHT + 16.0 and p.y < BED_FLOOR + 14.0 and p.y > BED_WALL_TOP - 90.0
+	return p.x > BED_LEFT - 16.0 and p.x < BED_RIGHT + 16.0 and p.y < BED_FLOOR + 14.0 and p.y > BED_WALL_TOP - 160.0
 
 
 # ---------------- yardımcılar ----------------

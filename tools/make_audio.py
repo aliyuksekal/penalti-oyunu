@@ -241,27 +241,65 @@ def song_garage():
 
 
 # ---------------- MOTOR ----------------
-def engine():
-    sr = 22050
-    f = 40.0          # rölantide ateşleme frekansı
-    L = 1.0           # 1 sn = 40 tam çevrim -> kusursuz döngü
-    n = int(L * sr)
-    m = int((L + 0.3) * sr)
+def diesel_loop(rpm, sr, er, seconds=1.6, load=0.6):
+    """6 silindirli, 4 zamanlı dizel (eski kamyon). Devirde kusursuz döngü üretir.
+    - ateşleme darbeleri (silindirler arası küçük farklar = 'tok tok' karakter)
+    - egzoz borusu rezonansı (bant geçiren süzgeçler + boru yankısı)
+    - dizel vuruntusu (yüksek frekanslı tıkırtı), emme uğultusu, turbo ıslığı
+    """
+    f = rpm / 60.0 * 3.0                       # ateşleme frekansı (6 silindir, 4 zaman)
+    cycles = max(6, int(round(seconds * f / 6.0)) * 6)
+    L = cycles / f                             # tam sayıda çevrim -> kusursuz döngü
+    n = int(round(L * sr))
+    m = n + int(0.4 * sr)
     x = np.zeros(m)
-    t = np.arange(m) / sr
     period = sr / f
-    for k in range(int((L + 0.3) * f)):
-        i0 = int(k * period)
-        seg = np.arange(int(period * 2.2))
-        amp = 0.8 + 0.25 * np.sin(k * 2.1) + 0.1 * rng.uniform(-1, 1)
-        pulse = amp * np.exp(-seg / (period * 0.35)) * np.sin(2 * np.pi * seg / period * 1.5)
+    cyl_amp = 1.0 + 0.16 * er.uniform(-1, 1, 6)     # her silindirin kendi gücü
+    cyl_off = er.uniform(-0.04, 0.04, 6) * period   # ateşleme zamanı farkı
+    for k in range(int((L + 0.4) * f)):
+        c = k % 6
+        i0 = int(k * period + cyl_off[c])
+        if i0 < 0 or i0 >= m:
+            continue
+        seg = np.arange(int(period * 3))
+        a = cyl_amp[c] * (1.0 + 0.06 * er.normal())
+        thump = np.exp(-seg / (0.0045 * sr)) * (1 - np.exp(-seg / (0.0004 * sr)))
+        burst = er.normal(0, 1, len(seg)) * np.exp(-seg / (0.0016 * sr))
+        pulse = a * (thump * 1.0 + 0.35 * burst * load)
         j = min(m, i0 + len(seg))
         x[i0:j] += pulse[: j - i0]
-    saw = ((t * f) % 1) * 2 - 1
-    rumble = lp(rng.normal(0, 1, m), 220, sr) * 0.6
-    y = lp(x, 900, sr) + 0.25 * lp(saw, 300, sr) + rumble
-    y += 0.08 * bp(rng.normal(0, 1, m), 1500, 4000, sr) * (0.6 + 0.4 * np.sin(2 * np.pi * f * t))  # egzoz cızırtısı
-    write("motor.wav", loop_fold(y, n), sr, 0.8)
+        # dizel vuruntusu (tık)
+        kn = er.normal(0, 1, int(0.003 * sr)) * np.exp(-np.arange(int(0.003 * sr)) / (0.0006 * sr))
+        j2 = min(m, i0 + len(kn))
+        x[i0:j2] += 0.18 * (0.6 + load) * hp(kn, 2500, sr)[: j2 - i0]
+    # egzoz: boru rezonansları
+    y = 0.9 * bp(x, 60, 160, sr) + 0.7 * bp(x, 160, 420, sr) + 0.35 * bp(x, 420, 1100, sr) + 0.12 * hp(x, 1100, sr)
+    d = int(0.0062 * sr)                         # egzoz borusu yankısı
+    z = y.copy()
+    z[d:] += 0.45 * y[:-d]
+    z[2 * d:] += 0.2 * y[:-2 * d]
+    t = np.arange(m) / sr
+    intake = lp(er.normal(0, 1, m), 500 + rpm * 0.3, sr) * (0.25 + 0.2 * load) * (0.7 + 0.3 * np.sin(2 * np.pi * f * t))
+    whistle = 0.012 * np.clip((rpm - 1100) / 1200, 0, 1) * np.sin(2 * np.pi * (1800 + rpm * 1.1) * t)
+    out = z + intake + whistle
+    out = np.tanh(out / (np.max(np.abs(out)) * 0.7))  # hafif doygunluk (sert dizel tınısı)
+    return loop_fold(out, n)
+
+
+def engine():
+    sr = 22050
+    er = np.random.default_rng(1983)
+    write("motor_rolanti.wav", diesel_loop(650, sr, er, 1.6, 0.35), sr, 0.85)
+    write("motor_orta.wav", diesel_loop(1350, sr, er, 1.4, 0.7), sr, 0.85)
+    write("motor_yuksek.wav", diesel_loop(2200, sr, er, 1.2, 1.0), sr, 0.85)
+    # ara gazdan sonra egzoz patlaması (eski kamyonların "pat pat"ı)
+    out = np.zeros(int(0.5 * sr))
+    for k, tt in enumerate([0.0, 0.11, 0.19, 0.31]):
+        L2 = int(0.09 * sr)
+        nz = er.normal(0, 1, L2) * np.exp(-np.arange(L2) / (0.012 * sr))
+        bang = lp(nz, 1200, sr) + 0.6 * np.sin(2 * np.pi * 70 * np.arange(L2) / sr) * np.exp(-np.arange(L2) / (0.02 * sr))
+        place(out, bang, tt, sr, 1.0 - k * 0.2)
+    write("patlama.wav", out, sr, 0.8)
 
 
 # ---------------- EFEKTLER ----------------
