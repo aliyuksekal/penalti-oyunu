@@ -155,6 +155,48 @@ func _controls() -> void:
 	await _wait(0.3)
 	_check(main.night_amount() < 0.05 and main._sun.visible and not main._moon.visible, "gündüz: güneş var")
 	_check(main.zone_name(1) == "Çayır Yolu" and main.zone_name(3) == "Orman Yolu", "bölge adları")
+	# ara gaz: 3 hızlı basış
+	for q in range(3):
+		_key(true)
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		_key(false)
+		await _wait(0.12)
+	_check(main._tap_streak >= 3, "3 hızlı basış ara gazı tetikledi (seri %d)" % main._tap_streak)
+	# teslimat ödülü tek sefer
+	var cx: float = main.terrain.checkpoint_x(main.next_cp)
+	var g0: int = main.gold_run
+	var cp0: int = main.next_cp
+	main.time_left = 100.0
+	main.truck.upright_at(Vector2(cx + 40.0, main.terrain.height_at(cx + 40.0) - 100.0))
+	await _wait(1.5)
+	var g1: int = main.gold_run
+	await _wait(1.0)
+	_check(main.next_cp == cp0 + 1, "istasyonda teslimat yapıldı")
+	_check(g1 > g0 and g1 - g0 <= 2000 and main.gold_run == g1, "ödül bir kez verildi ve sabit kaldı (+%d)" % (g1 - g0))
+	_check(main.has_saved_run() and int(main._saved_run["cp"]) == cp0 + 1, "istasyonda kayıt alındı")
+	# şifreli kayıt: düz metin olarak okunamaz, bozulursa yedekten açılır
+	main._save()
+	main._save()
+	var plain := ConfigFile.new()
+	_check(plain.load("user://dropzero.dat") != OK, "kayıt şifreli (düz okunamıyor)")
+	var fa := FileAccess.open("user://dropzero.dat", FileAccess.READ_WRITE)
+	fa.seek(40)
+	fa.store_8(fa.get_8() ^ 0xFF)
+	fa.close()
+	var tok: int = main.tokens
+	main.tokens = -5
+	main._load()
+	_check(main.tokens == tok, "bozulan kayıt yedekten yüklendi")
+	# kaldığı yerden devam
+	var seed0: int = main.terrain.get_seed()
+	var gsave: int = int(main._saved_run["gold"])
+	main.next_cp = 1
+	main.gold_run = 0
+	main.resume_run()
+	await _wait(0.5)
+	_check(main.next_cp == cp0 + 1 and main.gold_run == gsave and main.terrain.get_seed() == seed0, "kaldığı yerden devam: bölge %d, altın %d" % [main.next_cp, main.gold_run])
+	_check(absf(main.truck.body.global_position.x - (main.terrain.checkpoint_x(cp0) + 80.0)) < 200.0, "kamyon son istasyonda")
 	# süre dolunca oyun biter
 	main.time_left = 0.5
 	await _wait(1.0)
