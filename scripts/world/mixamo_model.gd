@@ -49,7 +49,6 @@ void fragment() {
 ## oyundaki durum -> animasyon
 const LOOPING := ["idle", "jog", "gk_idle", "gk_idle2", "gk_directing", "fallen"]
 
-static var _prepared: Dictionary = {}   # Animation -> true (kök hareketi bir kez ayıklanır)
 static var _info: Dictionary = {}       # anim adı -> {lat, t0, t1, contact}
 
 var is_keeper: bool = false
@@ -65,8 +64,12 @@ var _mats: Dictionary = {}   # "top" / "bottom" -> ShaderMaterial
 var _hair_mat: StandardMaterial3D
 var _bones: Dictionary = {}
 var _gloves: Array[MeshInstance3D] = []
-var _base_y: float = 0.0
 var _hop: float = 0.0
+var _hips_rest_xz := Vector2.ZERO
+var _dive_target := Vector3.ZERO
+var _dive_dur: float = 0.5
+var _dive_base := Vector3.ZERO
+var _dive_off := Vector3.ZERO
 
 
 func _init(keeper: bool = false, _skin: Color = Color.WHITE, _hair: Color = Color.BLACK) -> void:
@@ -209,47 +212,51 @@ func _add_gloves() -> void:
 		_gloves.append(mi)
 
 
-## Hips kök hareketinin yatay kısmını ayıkla (karakteri oyun kodu taşır),
-## dalış/vuruş zamanlamasını ölç.
+## Animasyonlar: döngü ayarı. Ölçümler (dalış yönü, vuruş anı) _ready'de, iskelet
+## gerçekten oynatılarak model uzayında yapılır; eksen varsayımı yok.
 func _prepare_animations() -> void:
-	var hips: int = bone("Hips")
-	var skx: Basis = _rel(skel).basis.orthonormalized()
-	var up_s: Vector3 = (skx.inverse() * Vector3.UP).normalized()
 	for an in ap.get_animation_list():
 		var a: Animation = ap.get_animation(an)
-		if a == null:
-			continue
-		var base: String = String(an).get_file()
-		if LOOPING.has(base):
+		if a != null and LOOPING.has(String(an).get_file()):
 			a.loop_mode = Animation.LOOP_LINEAR
-		if _prepared.has(a):
-			continue
-		_prepared[a] = true
-		for ti in a.get_track_count():
-			if a.track_get_type(ti) != Animation.TYPE_POSITION_3D:
-				continue
-			var path: String = String(a.track_get_path(ti))
-			if not path.ends_with("Hips"):
-				continue
-			var n: int = a.track_get_key_count(ti)
-			if n == 0:
-				continue
-			var p0: Vector3 = a.track_get_key_value(ti, 0)
-			# ölçüm: model uzayında yanal (x) ve ileri (z) yer değiştirme
-			var lat: PackedFloat32Array = []
-			var fwd: PackedFloat32Array = []
-			var times: PackedFloat32Array = []
-			for k in n:
-				var p: Vector3 = a.track_get_key_value(ti, k)
-				var dm: Vector3 = skx * (p - p0)
-				lat.append(dm.x)
-				fwd.append(dm.z)
-				times.append(a.track_get_key_time(ti, k))
-				var keep: Vector3 = p0 + up_s * (p - p0).dot(up_s)
-				a.track_set_key_value(ti, k, keep)
-			_info[base] = _measure(lat, fwd, times)
-	if hips < 0:
-		push_warning("Hips kemiği yok")
+	var hb: int = bone("Hips")
+	if hb >= 0:
+		var r: Vector3 = _rel(skel) * skel.get_bone_global_rest(hb).origin
+		_hips_rest_xz = Vector2(r.x, r.z)
+
+
+func _ready() -> void:
+	if ap != null and _info.is_empty():
+		for nm in ["gk_dive", "gk_dive2", "penalty_kick", "gk_catch", "gk_block"]:
+			_info[nm] = _sample(nm)
+		_play("gk_idle" if is_keeper else "idle", 0.0)
+
+
+## Animasyonu adım adım oynatıp kalçanın model uzayındaki yolunu ölç.
+func _sample(base: String) -> Dictionary:
+	var an: String = _anim_name(base)
+	if an == "":
+		return {}
+	var a: Animation = ap.get_animation(an)
+	var ln: float = a.length
+	var hb: int = bone("Hips")
+	var steps: int = 48
+	var lat: PackedFloat32Array = []
+	var fwd: PackedFloat32Array = []
+	var times: PackedFloat32Array = []
+	ap.play(an, 0.0)
+	ap.speed_scale = 1.0
+	var p0 := Vector3.ZERO
+	for k in steps + 1:
+		var tt: float = ln * k / steps
+		ap.seek(tt, true)
+		var p: Vector3 = _rel(skel) * skel.get_bone_global_pose(hb).origin
+		if k == 0:
+			p0 = p
+		lat.append(p.x - p0.x)
+		fwd.append(p.z - p0.z)
+		times.append(tt)
+	return _measure(lat, fwd, times)
 
 
 func _measure(lat: PackedFloat32Array, fwd: PackedFloat32Array, times: PackedFloat32Array) -> Dictionary:
@@ -362,38 +369,82 @@ func set_state(s: String) -> void:
 			pass  # dive_to() oynatır
 
 
-## Kaleci dalışı: d = kale düzleminde hedef (x: sağ/sol metre, y: yükseklik), dur = süre.
-## Karakteri yana kaydıran ara geçişi world.gd yerine burada kurar.
+## Kaleci dalışı: d = kale düzleminde hedef (x: dünya x'i, y: yükseklik), dur = topun
+## kaleye varış süresi. Eldivenlerin ortası tam bu noktaya, tam bu sürede ulaşır:
+## görüntü ile kurtarış/gol kararı birebir aynı olur.
 func dive_to(d: Vector2, dur: float) -> Tween:
 	state = "dive"
 	state_t = 0.0
-	var side: float = signf(d.x) if absf(d.x) > 0.9 else 0.0
-	var tw := create_tween().set_parallel(true)
+	_dive_dur = maxf(dur, 0.2)
+	_dive_base = Vector3(position.x, 0.0, position.z)
+	_dive_off = Vector3.ZERO
+	# dünya hedefini modelin yerel uzayına çevir (kaleci +Z'ye bakar)
+	_dive_target = Vector3(d.x, clampf(d.y, 0.12, 2.5), 0.12)
+	var local_x: float = (global_transform.affine_inverse() * _dive_target).x if is_inside_tree() else d.x
+	var side: float = signf(local_x) if absf(d.x) > 0.9 else 0.0
+	var pick: String = ""
 	if side == 0.0:
-		var nm: String = "gk_catch" if d.y > 1.25 else "gk_block"
-		var inf0: Dictionary = _info.get(nm, {})
-		var ln: float = float(inf0.get("len", 2.0))
-		_play(nm, 0.08, 1.6, ln * 0.18)
-		tw.tween_property(self, "position:x", d.x * 0.7, dur).set_ease(Tween.EASE_OUT)
-		return tw
-	# yanal hareketi doğru yöne olan dalış animasyonunu seç
-	var pick: String = "gk_dive"
-	for cand in ["gk_dive", "gk_dive2"]:
-		var ci: Dictionary = _info.get(cand, {})
-		if signf(float(ci.get("lat", 0.0))) == side:
-			pick = cand
-	var inf: Dictionary = _info.get(pick, {})
-	var t0: float = float(inf.get("t0", 0.6))
-	var t1: float = float(inf.get("t1", 1.2))
-	var start: float = maxf(t0 - 0.12, 0.0)
-	var speed: float = clampf((t1 - start) / maxf(dur, 0.15), 0.8, 3.0)
-	_play(pick, 0.06, speed, start)
-	# kalçayı topun biraz içine taşı; kollar topa uzanır
-	var reach: float = clampf(absf(d.x) - 0.95, 0.4, 2.6)
-	tw.tween_property(self, "position:x", side * reach, dur).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
-	# animasyonun geri kalanı yavaşça otursun
-	tw.chain().tween_callback(func() -> void: ap.speed_scale = 1.0)
+		pick = "gk_catch" if d.y > 1.25 else "gk_block"
+		var ln: float = float(_info.get(pick, {}).get("len", 2.0))
+		_play(pick, 0.08, 1.6, ln * 0.18)
+	else:
+		# kalçası gerçekten o yana giden dalış animasyonu
+		pick = "gk_dive"
+		for cand in ["gk_dive", "gk_dive2"]:
+			if signf(float(_info.get(cand, {}).get("lat", 0.0))) == side:
+				pick = cand
+		var inf: Dictionary = _info.get(pick, {})
+		var t0: float = float(inf.get("t0", 0.6))
+		var t1: float = float(inf.get("t1", 1.2))
+		var start: float = maxf(t0 - 0.1, 0.0)
+		_play(pick, 0.05, clampf((t1 - start) / _dive_dur, 0.8, 3.2), start)
+	var tw := create_tween()
+	tw.tween_interval(_dive_dur)
+	tw.tween_callback(func() -> void: ap.speed_scale = 1.0)
 	return tw
+
+
+func hands_world() -> Vector3:
+	var l: int = bone("LeftHand")
+	var r: int = bone("RightHand")
+	if l < 0 or r < 0:
+		return global_position + Vector3(0, 1.0, 0)
+	var g: Transform3D = skel.global_transform
+	return (g * skel.get_bone_global_pose(l).origin + g * skel.get_bone_global_pose(r).origin) * 0.5
+
+
+## Kalçayı yatayda yerinde tut (kök hareketini oyun kodu verir). Gerçek dönüşümlerle
+## hesaplanır, iskeletin eksen düzenine bağlı değildir.
+func _lock_root() -> void:
+	var hb: int = bone("Hips")
+	if hb < 0:
+		return
+	var hl: Vector3 = _rel(skel) * skel.get_bone_global_pose(hb).origin
+	var want := Vector3(_hips_rest_xz.x, hl.y, _hips_rest_xz.y)
+	var dm: Vector3 = want - hl
+	if dm.length_squared() < 1e-8:
+		return
+	var ds: Vector3 = _rel(skel).basis.inverse() * dm
+	var par: int = skel.get_bone_parent(hb)
+	if par >= 0:
+		ds = skel.get_bone_global_pose(par).basis.inverse() * ds
+	skel.set_bone_pose_position(hb, skel.get_bone_pose_position(hb) + ds)
+
+
+func _dive_follow(delta: float) -> void:
+	if state_t > _dive_dur + 0.08:
+		# top geçti: yerçekimi - havadaki kaleci yere iner
+		_dive_off.y = move_toward(_dive_off.y, 0.0, delta * 4.5)
+		position = _dive_base + _dive_off
+		return
+	var err: Vector3 = _dive_target - hands_world()
+	var want: Vector3 = _dive_off + err
+	want.y = clampf(want.y, 0.0, 1.3)
+	want.z = clampf(want.z, -0.4, 0.4)
+	var left: float = maxf(_dive_dur - state_t, 0.03)
+	var k: float = clampf(delta / left * 1.6, 0.0, 1.0)
+	_dive_off = _dive_off.lerp(want, k)
+	position = _dive_base + _dive_off
 
 
 func _process(delta: float) -> void:
@@ -402,7 +453,10 @@ func _process(delta: float) -> void:
 	if ap == null:
 		return
 	ap.advance(delta)
+	_lock_root()
 	match state:
+		"dive":
+			_dive_follow(delta)
 		"celebrate":
 			_hop = absf(sin(state_t * 7.0)) * 0.22 * clampf(3.0 - state_t, 0.0, 1.0)
 			_root.position.y = _hop

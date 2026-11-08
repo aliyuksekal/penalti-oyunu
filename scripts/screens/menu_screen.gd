@@ -75,7 +75,9 @@ func _on_item(id: String) -> void:
 		"levels":
 			main.show_screen("levels")
 		"quick":
-			main.show_screen("match", {"level": -1, "diff": Save.difficulty})
+			var m = main.new_modal(I18n.t("choose_role"), "ball")
+			add_role_buttons(m, -1)
+			m.add_button(I18n.t("close"), "gray", Callable())
 		"kits":
 			main.show_screen("kits")
 		"shop":

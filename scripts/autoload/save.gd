@@ -14,6 +14,7 @@ var coins: int = 0
 var unlocked: int = 0
 var stars: Array[int] = []
 var difficulty: int = 1
+var play_mode: int = 0   # 0 şutçu, 1 kaleci, 2 klasik seri
 var my_kit: String = "red_yellow"
 var rival_kit: String = "yellow_navy"
 var balls_owned: Array[int] = [0]
@@ -35,6 +36,7 @@ func _reset_values() -> void:
 	for i in LEVELS:
 		stars.append(0)
 	difficulty = 1
+	play_mode = 0
 	balls_owned.assign([0])
 	ball_equipped = 0
 	stats = {"matches": 0, "wins": 0, "goals": 0, "saves": 0, "shots": 0}
@@ -90,7 +92,7 @@ func complete_level(idx: int, s: int) -> void:
 func to_dict() -> Dictionary:
 	return {
 		"version": VERSION, "coins": coins, "unlocked": unlocked, "stars": stars,
-		"difficulty": difficulty, "my_kit": my_kit, "rival_kit": rival_kit,
+		"difficulty": difficulty, "play_mode": play_mode, "my_kit": my_kit, "rival_kit": rival_kit,
 		"balls_owned": balls_owned, "ball_equipped": ball_equipped, "stats": stats, "ai": ai,
 	}
 
@@ -105,6 +107,7 @@ func from_dict(d: Dictionary) -> bool:
 	for i in LEVELS:
 		stars.append(clampi(int(st[i]) if i < st.size() else 0, 0, 3))
 	difficulty = clampi(int(d.get("difficulty", 1)), 0, 3)
+	play_mode = clampi(int(d.get("play_mode", 0)), 0, 2)
 	my_kit = str(d.get("my_kit", "red_yellow"))
 	rival_kit = str(d.get("rival_kit", "yellow_navy"))
 	if not Kits.KITS.has(my_kit):

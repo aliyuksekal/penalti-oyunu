@@ -118,7 +118,7 @@ func build() -> void:
 	game = Match.new()
 	game.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(game)
-	game.setup(main.world, int(arg.get("level", -1)), int(arg.get("diff", Save.difficulty)))
+	game.setup(main.world, int(arg.get("level", -1)), int(arg.get("diff", Save.difficulty)), int(arg.get("mode", Save.play_mode)))
 	game.phase_changed.connect(_on_phase)
 	game.outcome.connect(_on_outcome)
 	game.score_changed.connect(_refresh_score)
@@ -532,10 +532,10 @@ func _on_finished(win: bool, s: Dictionary) -> void:
 	var lvl: int = int(s["level"])
 	if win and lvl >= 0 and lvl < Save.LEVELS - 1:
 		var nxt := func() -> void:
-			main.show_screen("match", {"level": lvl + 1, "diff": Save.difficulty})
+			main.show_screen("match", {"level": lvl + 1, "diff": Save.difficulty, "mode": game.mode})
 		m.add_button(I18n.t("next_level"), "primary", nxt, "skip")
 	var again := func() -> void:
-		main.show_screen("match", {"level": lvl, "diff": int(arg.get("diff", Save.difficulty))})
+		main.show_screen("match", {"level": lvl, "diff": int(arg.get("diff", Save.difficulty)), "mode": game.mode})
 	m.add_button(I18n.t("retry"), "blue", again, "retry")
 	var menu := func() -> void:
 		main.show_screen("levels" if lvl >= 0 else "menu")

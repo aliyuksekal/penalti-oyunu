@@ -21,6 +21,12 @@ var world: World
 var brain := Brain.new()
 var rng := RandomNumberGenerator.new()
 
+## 0 = yalnız şutçu, 1 = yalnız kaleci, 2 = klasik seri (sırayla ikisi)
+const MODE_SHOOT := 0
+const MODE_KEEP := 1
+const MODE_BOTH := 2
+const ROLE_SHOTS := 5
+var mode: int = MODE_BOTH
 var level: int = -1
 var diff: int = 1
 var style: int = 0
@@ -37,6 +43,7 @@ var sudden: bool = false
 
 var _pred: Array[float] = []
 var _keeper_zone: int = 4
+var _keeper_hands: Vector2 = Vector2(0, 1.0)
 var _pressure: int = 1
 var _ai_target: Vector2 = Vector2.ZERO
 var _ai_power: float = 0.7
@@ -54,8 +61,9 @@ var match_saves: int = 0
 var _running: bool = false
 
 
-func setup(w: World, level_idx: int, difficulty: int) -> void:
+func setup(w: World, level_idx: int, difficulty: int, play_mode: int = MODE_BOTH) -> void:
 	world = w
+	mode = clampi(play_mode, 0, 2)
 	rng.randomize()
 	level = level_idx
 	diff = difficulty
@@ -97,6 +105,11 @@ func _process(delta: float) -> void:
 
 func _decided() -> int:
 	## 1 = oyuncu kazandı, -1 = kaybetti, 0 = devam
+	if mode != MODE_BOTH:
+		# tek rol: 5 deneme; başarılı = SEN, başarısız = YAPAY ZEKÂ (5 tek sayı, berabere olmaz)
+		if turn >= ROLE_SHOTS:
+			return 1 if my_goals > ai_goals else -1
+		return 0
 	var my_shots: int = int((turn + 1) / 2)
 	var ai_shots: int = int(turn / 2)
 	if not sudden:
@@ -129,7 +142,11 @@ func _next_turn() -> void:
 		ai_marks.append(-1)
 		taunt.emit(I18n.t("sudden_death"))
 		score_changed.emit()
-	if turn % 2 == 0:
+	if mode == MODE_SHOOT:
+		_begin_player_shot()
+	elif mode == MODE_KEEP:
+		_begin_ai_shot()
+	elif turn % 2 == 0:
 		_begin_player_shot()
 	else:
 		_begin_ai_shot()
@@ -186,12 +203,19 @@ func on_shot(target: Vector2, power: float, curl: float) -> void:
 	# animasyon
 	await world.run_up(0.55)
 	Sfx.play("kick")
-	var kz: Vector2 = Brain.zone_center(_keeper_zone)
-	var dive_target: Vector2 = cross if kind == "saved" else kz.lerp(cross, _late_adjust(flight, curl) * 0.5)
+	# görüntü = karar: kurtarışta eller topa gider; golde kaleci, kararın hesaplandığı
+	# noktaya (topa yetişemediği yere) uzanır
+	var dive_target: Vector2 = cross if kind == "saved" else _keeper_hands
 	world.dive(dive_target, flight * 0.95)
 	await world.fly(cross, flight, curl, kind)
 	var mark: int = 1 if kind == "goal" else 0
-	my_marks[mini(int(turn / 2), my_marks.size() - 1)] = mark
+	if mode == MODE_SHOOT:
+		my_marks[mini(turn, 4)] = mark
+		ai_marks[mini(turn, 4)] = 1 - mark
+		if kind != "goal":
+			ai_goals += 1
+	else:
+		my_marks[mini(int(turn / 2), my_marks.size() - 1)] = mark
 	if kind == "goal":
 		my_goals += 1
 		Save.stats["goals"] = int(Save.stats["goals"]) + 1
@@ -214,6 +238,7 @@ func _late_adjust(flight: float, curl: float) -> float:
 
 func _resolve_vs_keeper(cross: Vector2, power: float, curl: float, flight: float) -> String:
 	var ax: float = absf(cross.x)
+	_keeper_hands = Brain.zone_center(_keeper_zone).lerp(cross, _late_adjust(flight, curl))
 	# direk / üst direk
 	if (ax > 3.56 and ax < 3.80 and cross.y < 2.52) or (cross.y > 2.36 and cross.y < 2.56 and ax < 3.80):
 		return "post"
@@ -221,6 +246,7 @@ func _resolve_vs_keeper(cross: Vector2, power: float, curl: float, flight: float
 		return "miss"
 	var k: Vector2 = Brain.zone_center(_keeper_zone)
 	var d: Vector2 = k.lerp(cross, _late_adjust(flight, curl))
+	_keeper_hands = d
 	var reach: float = 0.55 + 0.35 * skill
 	if cross.y > 1.8 and ax > 2.5:
 		reach -= 0.18  # üst köşe
@@ -228,7 +254,22 @@ func _resolve_vs_keeper(cross: Vector2, power: float, curl: float, flight: float
 		reach -= (power - 0.7) * 0.45
 	if _keeper_zone == 4 and ax < 0.95:
 		return "saved"
-	return "saved" if d.distance_to(cross) < reach else "goal"
+	return "saved" if keeper_covers(d, cross, reach) else "goal"
+
+
+## Kalecinin vücudu da topu keser: eller 'hands' noktasına uzanırken gövde ayaklardan
+## ellere bir çizgi gibi uzanır. Top bu çizgiye ~30 cm'den yakınsa kurtarış sayılır.
+static func keeper_covers(hands: Vector2, cross: Vector2, reach: float) -> bool:
+	if hands.distance_to(cross) < reach:
+		return true
+	var feet := Vector2(hands.x * 0.3, 0.1)
+	if absf(hands.x) < 0.9:
+		# yerinde kalan / ortaya uzanan kaleci: dik duran gövde
+		feet = Vector2(hands.x, 0.05)
+		hands = Vector2(hands.x, maxf(hands.y, 1.85))
+	var seg: Vector2 = hands - feet
+	var u: float = clampf((cross - feet).dot(seg) / maxf(seg.length_squared(), 0.0001), 0.0, 1.0)
+	return (feet + seg * u).distance_to(cross) < 0.3
 
 
 # ---------------- yapay zekâ şut atıyor (oyuncu kaleci) ----------------
@@ -288,13 +329,19 @@ func _run_ai_shot() -> void:
 		var reach: float = 0.85 - maxf(0.0, _ai_power - 0.8) * 0.4
 		if not dive_ok:
 			reach = 0.7
-		if d.distance_to(cross) < reach:
+		if keeper_covers(d, cross, reach):
 			kind = "saved"
 	brain.record_dive(Brain.zone_of(d.x, d.y) if dive_ok else 4)
 	world.dive(cross if kind == "saved" else d, flight * 0.9)
 	await world.fly(cross, flight, rng.randf_range(-0.3, 0.3), kind)
 	var mark: int = 1 if kind == "goal" else 0
-	ai_marks[mini(int(turn / 2), ai_marks.size() - 1)] = mark
+	if mode == MODE_KEEP:
+		ai_marks[mini(turn, 4)] = mark
+		my_marks[mini(turn, 4)] = 1 - mark
+		if kind != "goal":
+			my_goals += 1
+	else:
+		ai_marks[mini(int(turn / 2), ai_marks.size() - 1)] = mark
 	if kind == "goal":
 		ai_goals += 1
 	if kind == "saved":

@@ -267,6 +267,14 @@ func fly(cross: Vector2, flight: float, curl: float, kind: String) -> void:
 			t2.tween_property(ball, "position", into, 0.18)
 			t2.tween_property(ball, "position", Vector3(into.x, 0.11, -1.4), 0.35).set_ease(Tween.EASE_IN)
 			await t2.finished
+		"saved" when absf(cross.x) < 1.3 and cross.y < 1.9 and keeper.has_method("hands_world"):
+			# ortaya gelen top: kaleci kucaklar, top ellerde kalır
+			var hold := func(v: float) -> void:
+				ball.position = end.lerp(keeper.hands_world() + Vector3(0, 0, 0.12), v)
+			var th := create_tween()
+			th.tween_method(hold, 0.0, 1.0, 0.12)
+			th.tween_method(hold, 1.0, 1.0, 0.9)
+			await th.finished
 		"saved":
 			var out := Vector3(cross.x + signf(cross.x + 0.01) * 2.2, 0.11, 3.0)
 			var s3 := func(v: float) -> void:

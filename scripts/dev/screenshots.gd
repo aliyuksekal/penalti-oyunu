@@ -32,7 +32,7 @@ func _set_size(s: Vector2i) -> void:
 
 
 func _match_shots(prefix: String) -> void:
-	main.show_screen("match", {"level": 6, "diff": 1})
+	main.show_screen("match", {"level": 6, "diff": 1, "mode": 2})
 	await _wait(30)
 	var scr = main.screen
 	var game = scr.game
@@ -89,6 +89,10 @@ func _run() -> void:
 		await _set_size(Vector2i(1920, 1080))
 		main.show_screen("menu")
 		await _shot(lang + "_01_menu.png", 40)
+		if lang == "tr":
+			main.screen._on_item("quick")
+			await _shot("dev_roles.png", 20)
+			main.close_all_modals()
 		await _match_shots(lang)
 		main.show_screen("kits")
 		await _shot(lang + "_08_kits.png", 50)

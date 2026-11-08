@@ -77,35 +77,70 @@ func _run() -> void:
 	f.store_string("{bozuk")
 	f.close()
 	check(Save.load_data() and Save.coins == 777, "bozuk kayıtta yedek kullanıldı")
-	# tam maç (hızlandırılmış)
+	# tam maç (hızlandırılmış): 3 oyun biçimi
 	Save.reset_all()
-	Engine.time_scale = 6.0
-	main.show_screen("match", {"level": 0, "diff": 0})
-	await get_tree().process_frame
-	var scr = main.screen
-	var game = scr.game
-	var done: Array = [false, {}]
-	var on_fin := func(win: bool, s: Dictionary) -> void:
-		done[0] = true
-		done[1] = s
-	game.finished.connect(on_fin)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
-	var t0: int = Time.get_ticks_msec()
-	while not bool(done[0]) and Time.get_ticks_msec() - t0 < 90000:
+	var played: int = 0
+	for md in [2, 0, 1]:
+		Engine.time_scale = 6.0
+		main.show_screen("match", {"level": 0, "diff": 0, "mode": md})
 		await get_tree().process_frame
-		if game.phase == "aim":
-			game.on_shot(Vector2(rng.randf_range(-3.2, 3.2), rng.randf_range(0.2, 2.2)), rng.randf_range(0.5, 0.9), 0.0)
-		elif game.phase == "keep" and not game._dived:
-			game.on_dive(Vector2(rng.randf_range(-3, 3), rng.randf_range(0.3, 2.0)))
-	Engine.time_scale = 1.0
-	check(bool(done[0]), "maç sonuna kadar oynandı")
-	if bool(done[0]):
-		var s: Dictionary = done[1]
-		check(int(s["my_goals"]) != int(s["ai_goals"]), "maç bir kazananla bitti: %d-%d" % [int(s["my_goals"]), int(s["ai_goals"])])
-		check(int(Save.stats["matches"]) == 1, "istatistik kaydedildi")
-		await get_tree().create_timer(1.2).timeout
-		check(main.has_modal(), "sonuç penceresi açıldı")
+		var scr = main.screen
+		var game = scr.game
+		var done: Array = [false, {}]
+		var on_fin := func(win: bool, s: Dictionary) -> void:
+			done[0] = true
+			done[1] = s
+		game.finished.connect(on_fin)
+		var shots_seen: int = 0
+		var keeps_seen: int = 0
+		var t0: int = Time.get_ticks_msec()
+		while not bool(done[0]) and Time.get_ticks_msec() - t0 < 90000:
+			await get_tree().process_frame
+			if game.phase == "aim":
+				shots_seen += 1
+				game.on_shot(Vector2(rng.randf_range(-3.2, 3.2), rng.randf_range(0.2, 2.2)), rng.randf_range(0.5, 0.9), 0.0)
+			elif game.phase == "keep" and not game._dived:
+				keeps_seen += 1
+				game.on_dive(Vector2(rng.randf_range(-3, 3), rng.randf_range(0.3, 2.0)))
+		Engine.time_scale = 1.0
+		check(bool(done[0]), "maç sonuna kadar oynandı (biçim %d)" % md)
+		if bool(done[0]):
+			played += 1
+			var s: Dictionary = done[1]
+			check(int(s["my_goals"]) != int(s["ai_goals"]), "maç bir kazananla bitti: %d-%d (biçim %d)" % [int(s["my_goals"]), int(s["ai_goals"]), md])
+			if md == 0:
+				check(keeps_seen == 0 and shots_seen == 5, "şutçu biçiminde yalnız 5 şut: %d şut, %d kalecilik" % [shots_seen, keeps_seen])
+			elif md == 1:
+				check(shots_seen == 0 and int(s["my_goals"]) + int(s["ai_goals"]) == 5, "kaleci biçiminde yalnız 5 kurtarış denemesi")
+			await get_tree().create_timer(1.2).timeout
+			check(main.has_modal(), "sonuç penceresi açıldı")
+			main.close_all_modals()
+	check(int(Save.stats["matches"]) == played, "istatistik kaydedildi")
+	# fizik: vücut topu keser, uzaktaki top gol
+	check(Match.keeper_covers(Vector2(2.6, 0.5), Vector2(1.8, 0.35), 0.6), "sağa uzanan kalecinin gövdesine gelen top kurtarış")
+	check(not Match.keeper_covers(Vector2(2.6, 0.5), Vector2(-2.5, 0.5), 0.6), "ters köşe gol")
+	check(not Match.keeper_covers(Vector2(-2.6, 0.4), Vector2(-2.9, 2.2), 0.6), "alçak dalışta üst köşe gol")
+	check(Match.keeper_covers(Vector2(0, 1.0), Vector2(0.1, 1.7), 0.6), "ortadaki kaleci göğsüne gelen topu kurtarır")
+	# dalış: eldivenler tam hedefe, doğru yöne gider
+	var w2 = main.world
+	if w2.keeper.has_method("dive_to"):
+		main.show_screen("menu")
+		await get_tree().process_frame
+		for tgt in [Vector2(-2.6, 0.5), Vector2(2.6, 0.5), Vector2(2.9, 2.1), Vector2(-1.6, 1.4), Vector2(0.3, 1.6)]:
+			w2.keeper.position = Vector3(0, 0, 0.25)
+			w2.keeper.rotation = Vector3.ZERO
+			w2.keeper.set_state("keeper_ready")
+			await get_tree().create_timer(0.3).timeout
+			w2.keeper.dive_to(tgt, 0.5)
+			await get_tree().create_timer(0.52).timeout
+			var hw: Vector3 = w2.keeper.hands_world()
+			var miss: float = Vector2(hw.x, hw.y).distance_to(tgt)
+			check(miss < 0.3, "dalış %s -> eller %s (sapma %.2f m)" % [str(tgt), str(Vector2(hw.x, hw.y)), miss])
+			check(signf(w2.keeper.position.x) == signf(tgt.x) or absf(tgt.x) < 0.9, "kaleci doğru yana dalıyor %s" % str(tgt))
+		w2.keeper.position = Vector3(0, 0, 0.25)
+		w2.keeper.set_state("keeper_ready")
 	# ekranlar x diller x temalar
 	for theme_mode in ["light", "dark"]:
 		Settings.set_value("theme", theme_mode)

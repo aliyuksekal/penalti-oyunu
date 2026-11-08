@@ -99,9 +99,7 @@ func _open_level(idx: int) -> void:
 	var m = main.new_modal(I18n.t("level_n", {"v": idx + 1}), "ball")
 	m.add_text(I18n.t("league_%d" % int(idx / 4)), 26, "text")
 	m.add_text(I18n.t("keeper_style", {"v": I18n.t("style_%d" % (idx % 4))}) + " · " + I18n.t("diff_%d" % Save.difficulty), 24)
-	var go := func() -> void:
-		main.show_screen("match", {"level": idx, "diff": Save.difficulty})
-	m.add_button(I18n.t("start_match"), "primary", go, "play")
+	add_role_buttons(m, idx)
 	if Save.stars[idx] == 0 and idx < Save.LEVELS - 1:
 		var reward := func() -> void:
 			Save.complete_level(idx, 1)
