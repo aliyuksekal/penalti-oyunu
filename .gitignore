@@ -9,6 +9,4 @@ export_credentials.cfg
 *.aab
 *.jks
 *.keystore
-# indirilen font (CI indirir)
-/assets/fonts/*.ttf
-/assets/models/remy.glb
+/*.png

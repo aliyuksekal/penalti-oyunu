@@ -1,0 +1,161 @@
+extends Node
+## Reklam ve uygulama içi satın alma katmanı.
+##
+## ŞU AN TEST MODUNDA: gerçek reklam yerine tam ekran bir "TEST REKLAMI" gösterir,
+## jeton paketleri gerçek ödeme almadan verilir. Oyunun tüm akışı (ne zaman reklam
+## çıkar, ödül ne zaman verilir) gerçeğiyle aynıdır.
+## Yayından önce: AdMob eklentisi (tam ekran = interstitial, ödüllü = rewarded) ve
+## Google Play Billing eklentisi bu dosyadaki _real_* noktalarına bağlanır.
+## Alt banner reklamı bilerek YOK.
+
+signal tokens_purchased(amount: int)
+
+@export var test_mode: bool = true
+## İki tam ekran reklam arasındaki en kısa süre (sn). 0 = her işlemde reklam.
+@export var interstitial_min_gap: float = 0.0
+@export var test_interstitial_seconds: float = 3.0
+@export var test_rewarded_seconds: float = 5.0
+
+## Mağazadaki jeton paketleri (fiyatlar Play Console'dan gelir)
+const PACKS: Array = [
+	{"id": "jeton_300", "name": "Küçük Kasa", "tokens": 300, "price": "₺ —"},
+	{"id": "jeton_800", "name": "Orta Kasa (+%15)", "tokens": 800, "price": "₺ —"},
+	{"id": "jeton_2000", "name": "Büyük Kasa (+%30)", "tokens": 2000, "price": "₺ —"},
+]
+
+var autoclose: bool = false   # sadece otomatik testler için
+var _last_interstitial_ms: int = -1000000
+var _layer: CanvasLayer
+
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	_layer = CanvasLayer.new()
+	_layer.layer = 100
+	add_child(_layer)
+
+
+func is_showing() -> bool:
+	return _layer.get_child_count() > 0
+
+
+## Tam ekran reklam; kapanınca done çağrılır (reklam yüklenemezse de çağrılır, oyuncu bekletilmez)
+func show_interstitial(done: Callable) -> void:
+	var gap_ok: bool = Time.get_ticks_msec() - _last_interstitial_ms >= int(interstitial_min_gap * 1000.0)
+	if not gap_ok:
+		done.call()
+		return
+	_last_interstitial_ms = Time.get_ticks_msec()
+	if not test_mode:
+		_real_interstitial(done)
+		return
+	_overlay("REKLAM", "Tam ekran reklam (TEST)", test_interstitial_seconds, "KAPAT  ✕", func(_watched: bool) -> void: done.call(), false)
+
+
+## Ödüllü reklam; sonuna kadar izlenirse on_reward çağrılır
+func show_rewarded(on_reward: Callable, on_cancel: Callable = Callable()) -> void:
+	if not test_mode:
+		_real_rewarded(on_reward, on_cancel)
+		return
+	var finish := func(watched: bool) -> void:
+		if watched:
+			on_reward.call()
+		elif on_cancel.is_valid():
+			on_cancel.call()
+	_overlay("ÖDÜLLÜ REKLAM", "Sonuna kadar izle, ödülünü al (TEST)", test_rewarded_seconds, "ÖDÜLÜ AL", finish, true)
+
+
+## Jeton paketi satın al
+func buy_pack(pack: Dictionary, on_success: Callable) -> void:
+	if not test_mode:
+		_real_purchase(pack, on_success)
+		return
+	var finish := func(watched: bool) -> void:
+		if watched:
+			on_success.call()
+			tokens_purchased.emit(int(pack["tokens"]))
+	_overlay("SATIN ALMA (TEST)", "%s: %d jeton\nTest modunda gerçek ödeme alınmaz." % [pack["name"], int(pack["tokens"])], 1.0, "ONAYLA", finish, true)
+
+
+# ---------------- gerçek SDK bağlantı noktaları ----------------
+func _real_interstitial(done: Callable) -> void:
+	# AdMob eklentisi eklenince: yüklenmiş interstitial'ı göster, kapanınca done.call()
+	done.call()
+
+
+func _real_rewarded(on_reward: Callable, on_cancel: Callable) -> void:
+	# AdMob eklentisi eklenince: rewarded göster, "user_earned_reward" gelince on_reward.call()
+	if on_cancel.is_valid():
+		on_cancel.call()
+
+
+func _real_purchase(pack: Dictionary, on_success: Callable) -> void:
+	# Google Play Billing eklentisi eklenince: pack["id"] ürününü satın al, onaylanınca on_success.call()
+	pass
+
+
+# ---------------- TEST reklam ekranı ----------------
+func _overlay(title: String, sub: String, secs: float, close_text: String, on_close: Callable, cancellable: bool) -> void:
+	var root := ColorRect.new()
+	root.color = Color(0.02, 0.02, 0.04, 0.97)
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_layer.add_child(root)
+
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_CENTER)
+	box.offset_left = -360
+	box.offset_right = 360
+	box.offset_top = -170
+	box.offset_bottom = 170
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 18)
+	root.add_child(box)
+	var t := Label.new()
+	t.text = title
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_size_override("font_size", 54)
+	t.add_theme_color_override("font_color", Color(1, 0.8, 0.2))
+	box.add_child(t)
+	var s := Label.new()
+	s.text = sub
+	s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	s.add_theme_font_size_override("font_size", 26)
+	box.add_child(s)
+	var cnt := Label.new()
+	cnt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cnt.add_theme_font_size_override("font_size", 40)
+	box.add_child(cnt)
+	var btn := Button.new()
+	btn.text = close_text
+	btn.custom_minimum_size = Vector2(320, 70)
+	btn.add_theme_font_size_override("font_size", 28)
+	btn.disabled = true
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(btn)
+	var cancel := Button.new()
+	cancel.text = "Vazgeç"
+	cancel.flat = true
+	cancel.add_theme_font_size_override("font_size", 22)
+	cancel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	cancel.visible = cancellable
+	box.add_child(cancel)
+
+	var state := {"left": secs, "done": false}
+	var finish := func(watched: bool) -> void:
+		if state["done"]:
+			return
+		state["done"] = true
+		root.queue_free()
+		on_close.call(watched)
+	btn.pressed.connect(finish.bind(true))
+	cancel.pressed.connect(finish.bind(false))
+	while float(state["left"]) > 0.0 and not bool(state["done"]) and is_instance_valid(cnt):
+		cnt.text = "%d" % ceili(float(state["left"]))
+		await get_tree().create_timer(0.1, true).timeout
+		state["left"] = float(state["left"]) - 0.1
+	if not bool(state["done"]) and is_instance_valid(cnt):
+		cnt.text = ""
+		btn.disabled = false
+		if autoclose:
+			finish.call(true)

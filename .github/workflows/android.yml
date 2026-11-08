@@ -1,4 +1,4 @@
-name: Penaltı Ustası derleme (AAB + APK)
+name: Ağır Yük derleme (AAB + APK)
 
 on:
   push:
@@ -22,7 +22,7 @@ env:
   TEMPLATE_DIR: "4.7.2.stable"
   BUILD_TOOLS: "36.1.0"
   NDK_VERSION: "29.0.14206865"
-  VERSION_BASE: "1.1"
+  VERSION_BASE: "1.0"
 
 jobs:
   build:
@@ -72,27 +72,6 @@ jobs:
             printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' "$ANDROID_HOME" "$JAVA_HOME" > ~/.config/godot/$f
           done
 
-      - name: Yazı tipi (Nunito, OFL)
-        run: |
-          mkdir -p assets/fonts
-          curl -fsSL --retry 3 -o assets/fonts/Nunito.ttf "https://github.com/google/fonts/raw/main/ofl/nunito/Nunito%5Bwght%5D.ttf" \
-            || echo "::warning::Nunito indirilemedi, sistem fontu kullanılacak"
-          ls -la assets/fonts || true
-
-      - name: Mixamo paketi -> GLB (Blender)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -eo pipefail
-          mkdir -p /tmp/mixamo build/preview assets/models
-          gh release download v1 --repo "$GITHUB_REPOSITORY" --dir /tmp/mixamo --pattern "*.zip"
-          (cd /tmp/mixamo && for z in *.zip; do unzip -o -q "$z"; done && ls | head -80)
-          sudo apt-get update -qq && sudo apt-get install -y -qq blender python3-numpy > /dev/null
-          blender --version | head -1
-          blender -b --factory-startup -P tools/mixamo_to_glb.py -- /tmp/mixamo assets/models/remy.glb build/remy_info.json build/preview 2>&1 | grep -vE "^Fra:|Sample|Rendering" | tail -60
-          ls -la assets/models build/preview
-          test -s assets/models/remy.glb || { echo "::error::remy.glb üretilemedi"; exit 1; }
-
       - name: Android derleme şablonu + R8
         run: |
           set -e
@@ -119,20 +98,27 @@ jobs:
           godot --headless --path . --import 2>&1 | tee import.log | tail -20
           if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|SHADER ERROR" import.log; then echo "::error::Betik hatası"; exit 1; fi
 
-      - name: Otomatik testler
+      - name: Otomatik testler (sürüş, oyun sonu, ekonomi, tüm kamyonlar)
         run: |
-          set -o pipefail
-          timeout 600 godot --headless --path . -- --selftest 2>&1 | tee selftest.log
-          grep -q "SELFTEST PASS" selftest.log
-          if grep -E "SCRIPT ERROR|SHADER ERROR|Parse Error|Invalid call|Invalid access|Invalid get|Invalid set|Invalid assignment|Invalid operands|Cannot call" selftest.log; then echo "::error::Çalışma zamanı hatası"; exit 1; fi
+          fail=0
+          for c in economy alltrucks drive flip fuel cargo; do
+            echo "===== $c"
+            timeout 240 godot --headless --path . res://test/test.tscn -- --case=$c > case_$c.log 2>&1 || true
+            grep -E "ok  |HATA|SONUÇ|SCRIPT ERROR|ERROR|at: " case_$c.log | head -40
+            if grep -qE "SCRIPT ERROR|ERROR|HATA" case_$c.log; then fail=1; fi
+            if ! grep -q "SONUÇ" case_$c.log; then echo "::error::$c testi bitmedi"; fail=1; fi
+          done
+          cat case_*.log > selftest.log
+          exit $fail
 
       - name: Ekran görüntüleri (gerçek OpenGL çizimi)
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri libglx-mesa0 mesa-utils > /dev/null
           mkdir -p build/screenshots && touch build/.gdignore
-          timeout 600 xvfb-run -a -s "-screen 0 2600x2600x24" godot --path . --rendering-driver opengl3 --resolution 1920x1080 -- --screenshots=$PWD/build/screenshots 2>&1 | tee shots.log || true
+          timeout 300 xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 --resolution 1280x720 res://test/test.tscn -- --case=shots --shot 2>&1 | tee shots.log || true
+          mv -f *.png build/screenshots/ 2>/dev/null || true
           ls -la build/screenshots
-          if grep -E "SCRIPT ERROR|SHADER ERROR|Invalid call|Invalid access|Invalid get|Invalid set|Invalid assignment" shots.log; then echo "::error::Çizim sırasında hata"; exit 1; fi
+          if grep -E "SCRIPT ERROR|Invalid call|Invalid access|Invalid get|Invalid set|Invalid assignment" shots.log; then echo "::error::Çizim sırasında hata"; exit 1; fi
 
       - name: İmza anahtarı
         env:
@@ -179,12 +165,12 @@ jobs:
         run: |
           set -e
           mkdir -p build
-          godot --headless --path . --export-release "Android AAB" build/penalti-ustasi.aab 2>&1 | tee export_aab.log | tail -40
-          test -s build/penalti-ustasi.aab
+          godot --headless --path . --export-release "Android AAB" build/agir-yuk.aab 2>&1 | tee export_aab.log | tail -40
+          test -s build/agir-yuk.aab
           MAP=$(find android/build/build/outputs -name mapping.txt | head -1 || true)
           [ -n "$MAP" ] && cp "$MAP" build/mapping.txt || echo "::warning::mapping.txt bulunamadı"
-          godot --headless --path . --export-release "Android APK" build/penalti-ustasi.apk 2>&1 | tee export_apk.log | tail -40
-          test -s build/penalti-ustasi.apk
+          godot --headless --path . --export-release "Android APK" build/agir-yuk.apk 2>&1 | tee export_apk.log | tail -40
+          test -s build/agir-yuk.apk
           # Play Console'a yalnızca gönderdiğimiz ABI'lerin sembolleri (arm64-v8a, armeabi-v7a, x86_64)
           rm -rf /tmp/sym && mkdir -p /tmp/sym && unzip -q ~/godot-dl/Godot_native_debug_symbols.${GODOT_VERSION}.stable.template_release.android.zip -d /tmp/sym
           find /tmp/sym -maxdepth 3 -type d | head -20
@@ -197,11 +183,11 @@ jobs:
         run: |
           set -e
           BT="$ANDROID_HOME/build-tools/${BUILD_TOOLS}"
-          "$BT/aapt2" dump badging build/penalti-ustasi.apk | grep -E "package:|sdkVersion|targetSdkVersion|application-label:|uses-permission|native-code" | tee verify.txt
+          "$BT/aapt2" dump badging build/agir-yuk.apk | grep -E "package:|sdkVersion|targetSdkVersion|application-label:|uses-permission|native-code" | tee verify.txt
           grep -q "targetSdkVersion:'36'" verify.txt
-          "$BT/apksigner" verify --print-certs build/penalti-ustasi.apk | head -5 | tee -a verify.txt
-          "$BT/zipalign" -c -P 16 4 build/penalti-ustasi.apk && echo "16 KB hizalama: OK" | tee -a verify.txt
-          jarsigner -verify build/penalti-ustasi.aab | tail -1 | tee -a verify.txt
+          "$BT/apksigner" verify --print-certs build/agir-yuk.apk | head -5 | tee -a verify.txt
+          "$BT/zipalign" -c -P 16 4 build/agir-yuk.apk && echo "16 KB hizalama: OK" | tee -a verify.txt
+          jarsigner -verify build/agir-yuk.aab | tail -1 | tee -a verify.txt
           ls -la build
 
       - name: bundletool
@@ -226,10 +212,10 @@ jobs:
       - name: Sürüm notu
         run: |
           {
-            echo "## Penaltı Ustası ${VERSION_NAME} (sürüm kodu ${VERSION_CODE})"
+            echo "## Ağır Yük ${VERSION_NAME} (sürüm kodu ${VERSION_CODE})"
             echo
-            echo "- **penalti-ustasi.apk** – telefona doğrudan kurulum"
-            echo "- **penalti-ustasi.aab** – Google Play Console'a yüklenecek paket"
+            echo "- **agir-yuk.apk** – telefona doğrudan kurulum"
+            echo "- **agir-yuk.aab** – Google Play Console'a yüklenecek paket"
             echo "- **mapping.txt** – Play Console > App bundle explorer > Downloads > ReTrace mapping file"
             echo "- **native-debug-symbols.zip** – Play Console > App bundle explorer > Downloads > Native debug symbols"
             echo
@@ -253,8 +239,6 @@ jobs:
           cp -r build/screenshots /tmp/out/ 2>/dev/null || true
           cp selftest.log shots.log verify.txt export_aab.log export_apk.log /tmp/out/ 2>/dev/null || true
           cp -r build/device /tmp/out/ 2>/dev/null || true
-          cp -r build/preview /tmp/out/ 2>/dev/null || true
-          cp build/remy_info.json /tmp/out/ 2>/dev/null || true
           ls -la build > /tmp/out/build_listing.txt 2>/dev/null || true
           cd /tmp/out && git init -q && git checkout -q -b ci-out && git add -A
           git -c user.name="ci" -c user.email="ci@users.noreply.github.com" commit -q -m "CI ${VERSION_NAME}"
@@ -264,7 +248,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: penalti-ustasi-${{ env.VERSION_NAME }}
+          name: agir-yuk-${{ env.VERSION_NAME }}
           path: |
             build/*.apk
             build/*.aab
@@ -280,11 +264,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION_NAME }}
-          name: Penaltı Ustası ${{ env.VERSION_NAME }}
+          name: Ağır Yük ${{ env.VERSION_NAME }}
           body_path: build/RELEASE_NOTES.md
           make_latest: true
           files: |
-            build/penalti-ustasi.apk
-            build/penalti-ustasi.aab
+            build/agir-yuk.apk
+            build/agir-yuk.aab
             build/mapping.txt
             build/native-debug-symbols.zip
