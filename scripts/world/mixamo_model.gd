@@ -437,14 +437,32 @@ func _dive_follow(delta: float) -> void:
 		_dive_off.y = move_toward(_dive_off.y, 0.0, delta * 4.5)
 		position = _dive_base + _dive_off
 		return
+	_reach_arms(smoothstep(0.0, _dive_dur, state_t) * 0.9)
 	var err: Vector3 = _dive_target - hands_world()
 	var want: Vector3 = _dive_off + err
-	want.y = clampf(want.y, 0.0, 1.3)
+	want.y = clampf(want.y, 0.0, 1.6)
 	want.z = clampf(want.z, -0.4, 0.4)
 	var left: float = maxf(_dive_dur - state_t, 0.03)
 	var k: float = clampf(delta / left * 1.6, 0.0, 1.0)
 	_dive_off = _dive_off.lerp(want, k)
 	position = _dive_base + _dive_off
+
+
+## Kollar topa uzanır (dalış boyunca giderek artan ağırlıkla).
+func _reach_arms(w: float) -> void:
+	if w <= 0.0:
+		return
+	var g: Transform3D = skel.global_transform
+	for side in ["Left", "Right"]:
+		var ua: int = bone(side + "Arm")
+		var fa: int = bone(side + "ForeArm")
+		var hd: int = bone(side + "Hand")
+		if ua < 0 or fa < 0 or hd < 0:
+			continue
+		var sh: Vector3 = g * skel.get_bone_global_pose(ua).origin
+		var dir: Vector3 = _dive_target - sh
+		_aim(ua, fa, dir, w)
+		_aim(fa, hd, dir, w)
 
 
 func _process(delta: float) -> void:
