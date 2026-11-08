@@ -40,6 +40,12 @@ adb shell input tap $BX $BY; sleep 4
 adb exec-out screencap -p > "$OUT/02_game.png"
 adb shell input swipe $((W*88/100)) $((H*95/100)) $((W*88/100)) $((H*95/100)) 5000; sleep 1
 adb exec-out screencap -p > "$OUT/03_after_gas.png"
+# ekranı döndür: üst bilgi şeridi hep en üstte kalmalı
+adb shell settings put system accelerometer_rotation 0
+adb shell settings put system user_rotation 1; sleep 4
+adb exec-out screencap -p > "$OUT/04_landscape.png"
+adb shell settings put system user_rotation 0; sleep 4
+adb exec-out screencap -p > "$OUT/05_portrait_again.png"
 PID=$(adb shell pidof "$PKG" | tr -d '\r')
 adb logcat -d > "$OUT/logcat.txt"
 if [ -n "$PID" ]; then echo "Uygulama çalışıyor (pid $PID)" | tee -a "$OUT/result.txt"; else echo "Uygulama çalışmıyor / kapandı" | tee -a "$OUT/result.txt"; FAIL=1; fi

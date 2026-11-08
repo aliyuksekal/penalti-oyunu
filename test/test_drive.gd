@@ -5,6 +5,7 @@ var main: Node
 var t := 0.0
 var next_print := 0.0
 var _done := false
+var _rescued := false
 var _driving := false
 
 func _ready() -> void:
@@ -173,7 +174,11 @@ func _systems() -> void:
 		prev = h
 	_check(worst < 200.0, "arazi kopuksuz (rampa inişi dahil) (32 px'te en büyük sıçrama %.0f px)" % worst)
 	var kinds := {}
-	for i in range(15):
+	var early: float = 0.0
+	for i in range(0, 3):
+		early += float(tg.feature_at(i)["h"])
+	_check(early == 0.0, "ilk 600 m engelsiz (kolay başlangıç)")
+	for i in range(40):
 		var k: String = tg.feature_at(i)["kind"]
 		kinds[k] = int(kinds.get(k, 0)) + 1
 	print("  kesimler (ilk 3 km): ", kinds)
@@ -250,6 +255,13 @@ func _economy() -> void:
 	_key(true)
 	await _wait(10.0)
 	_check(main._distance_m() > 60.0, "Kartal ile sürüş: %d m" % int(main._distance_m()))
+	main.set_dev_mode(true)
+	main.select_truck("titan")
+	await _wait(0.3)
+	_check(main.selected == "titan" and not main.owned.has("titan"), "geliştirici modu: Titan almadan seçildi")
+	main.set_dev_mode(false)
+	await _wait(0.3)
+	_check(main.selected == "tosun", "geliştirici modu kapanınca sahip olunan kamyona dönüldü")
 	print("SONUÇ: ekonomi bitti")
 
 func _alltrucks() -> void:
@@ -275,6 +287,12 @@ func _alltrucks() -> void:
 		main.open_menu()
 
 func _shots() -> void:
+	# açılış animasyonu kareleri
+	main._play_intro()
+	for tt in [0.5, 1.25, 1.7, 1.95]:
+		await _wait(tt - (0.0 if tt == 0.5 else 0.0))
+		await _shot("intro_%d.png" % int(tt * 100))
+	await _wait(1.0)
 	for d in main.TruckCatalog.all():
 		if not main.owned.has(d["id"]):
 			main.owned.append(d["id"])
@@ -283,16 +301,17 @@ func _shots() -> void:
 	main.owned = ["tosun", "kartal", "bozkurt"]
 	main.menu.refresh()
 	await _wait(1.0)
+	await _shot("m_home.png")
+	main.menu.open_panel("trucks")
+	await _wait(0.6)
 	await _shot("m_trucks.png")
 	main.menu._scroll.scroll_vertical = 700
 	await _wait(0.3)
 	await _shot("m_trucks2.png")
-	main.menu.tab = "upgrades"
-	main.menu.refresh()
+	main.menu.open_panel("upgrades")
 	await _wait(0.3)
 	await _shot("m_upgrades.png")
-	main.menu.tab = "shop"
-	main.menu.refresh()
+	main.menu.open_panel("shop")
 	await _wait(0.3)
 	await _shot("m_shop.png")
 	main.ads.autoclose = false
@@ -364,6 +383,22 @@ func _physics_process(delta: float) -> void:
 			elif cs == "cargo":
 				for c in main.cargo:
 					c.global_position += Vector2(-600, -300)
+		if main.rescue_panel != null and not _rescued:
+			_rescued = true
+			print("  ok  reklamla kurtarma teklif edildi (%s)" % cs)
+			if cs == "fuel":
+				main._apply_rescue("fuel")
+				_check(absf(tr.fuel - tr.fuel_capacity * 0.10) < 0.5 and not get_tree().paused, "1. reklam: depo %%10 doldu, oyun sürüyor")
+				main.fuel_ads = 3
+				tr.fuel = 0.0
+			else:
+				main._apply_rescue("flip")
+				await get_tree().physics_frame
+				_check(cos(tr.body.global_rotation) > 0.9 and not get_tree().paused, "reklamla kamyon düzeltildi")
+				main.flip_rescues = 3
+				tr.body.global_rotation = PI
+				tr.body.global_position += Vector2(0, -120)
+			return
 		if cs == "flip" and t > 1.0:
 			main._out_time.clear()
 			for c in main.cargo:
@@ -376,7 +411,7 @@ func _physics_process(delta: float) -> void:
 				get_viewport().get_texture().get_image().save_png("res://shot_over.png")
 			print("SONUÇ: durum=%s neden=%s t=%.1f panel=%s" % [cs, main.end_reason, t, str(main.over_panel != null)])
 			get_tree().quit()
-		elif t > 12.0:
+		elif t > 25.0:
 			print("SONUÇ: durum=%s OYUN BİTMEDİ (HATA)" % cs)
 			get_tree().quit(1)
 		return

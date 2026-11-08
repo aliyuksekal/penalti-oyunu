@@ -49,6 +49,7 @@ var gold_run: int = 0
 var total_gold: int = 0
 var best_m: float = 0.0
 var tokens: int = 0
+var dev_mode: bool = false        # geliştirici modu: tüm kamyonlar seçilebilir
 var owned: Array = ["tosun"]
 var selected: String = "tosun"
 var up_levels: Dictionary = {}     # "kamyon:yükseltme" -> seviye
@@ -242,6 +243,124 @@ func _ready() -> void:
 		start_game()
 	else:
 		open_menu()
+	if not intro_done:
+		intro_done = true
+		var testing: bool = false
+		for a in OS.get_cmdline_user_args():
+			if String(a).begins_with("--case"):
+				testing = true
+		if not testing:
+			_play_intro()
+
+
+## Açılış animasyonu: logo belirir, motor kükrer, kamyon (logo) burnunun baktığı yöne,
+## sol üste doğru gazlayıp fırlar; ardından oyun açılır. Dokununca atlanır.
+static var intro_done: bool = false
+
+
+func _play_intro() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 60
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(layer)
+	var bg := ColorRect.new()
+	bg.color = Color(0.08, 0.08, 0.18)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(bg)
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var lsz: float = minf(vp.x, vp.y) * 0.48
+	var logo := TextureRect.new()
+	logo.texture = load("res://icons/logo_rounded_1024.png")
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.size = Vector2(lsz, lsz)
+	logo.pivot_offset = logo.size * 0.5
+	logo.position = vp * 0.5 - logo.size * 0.5 - Vector2(0, lsz * 0.12)
+	logo.modulate.a = 0.0
+	logo.scale = Vector2(0.6, 0.6)
+	bg.add_child(logo)
+	var title := _label(bg, "DROP ZERO", 64)
+	title.add_theme_color_override("font_color", Color(1.0, 0.62, 0.15))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.size = Vector2(vp.x, 80)
+	title.position = Vector2(0, logo.position.y + lsz + 14)
+	title.modulate.a = 0.0
+	var sub := _label(bg, "Heavy Hauler", 32)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.size = Vector2(vp.x, 50)
+	sub.position = Vector2(0, title.position.y + 74)
+	sub.modulate.a = 0.0
+	# toz bulutu (arka tekerden)
+	var dust := CPUParticles2D.new()
+	dust.position = logo.position + Vector2(lsz * 0.72, lsz * 0.78)
+	dust.amount = 40
+	dust.lifetime = 0.7
+	dust.direction = Vector2(1, 0.3)
+	dust.spread = 35.0
+	dust.initial_velocity_min = 120.0
+	dust.initial_velocity_max = 320.0
+	dust.gravity = Vector2(0, 260)
+	dust.scale_amount_min = 4.0
+	dust.scale_amount_max = 10.0
+	dust.color = Color(0.85, 0.55, 0.4, 0.8)
+	dust.emitting = false
+	bg.add_child(dust)
+
+	var done := {"v": false}
+	var finish := func() -> void:
+		if done["v"]:
+			return
+		done["v"] = true
+		var tf := create_tween()
+		tf.tween_property(bg, "modulate:a", 0.0, 0.35)
+		tf.tween_callback(layer.queue_free)
+	var on_tap := func(e: InputEvent) -> void:
+		if (e is InputEventMouseButton or e is InputEventScreenTouch) and e.is_pressed():
+			finish.call()
+	bg.gui_input.connect(on_tap)
+
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(logo, "modulate:a", 1.0, 0.35)
+	tw.tween_property(logo, "scale", Vector2.ONE, 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(title, "modulate:a", 1.0, 0.4).set_delay(0.35)
+	tw.tween_property(sub, "modulate:a", 1.0, 0.4).set_delay(0.55)
+	tw.set_parallel(false)
+	tw.tween_interval(0.45)
+	# motor kükrüyor: titreme + toz
+	var rev := func() -> void:
+		snd.sfx("turbo", 0.0, 0.8)
+		dust.emitting = true
+	tw.tween_callback(rev)
+	for i in range(6):
+		tw.tween_property(logo, "rotation", (-0.03 if i % 2 == 0 else 0.02), 0.05)
+	# gazla ve git: burnunun baktığı yöne (sol üst)
+	tw.tween_callback(func() -> void: snd.sfx("turbo", 2.0, 1.2))
+	tw.set_parallel(true)
+	tw.tween_property(logo, "position", logo.position + Vector2(-vp.x * 0.9, -vp.y * 0.75), 0.6).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_IN)
+	tw.tween_property(logo, "rotation", -0.35, 0.6).set_ease(Tween.EASE_IN)
+	tw.tween_property(logo, "scale", Vector2(0.55, 0.55), 0.6).set_ease(Tween.EASE_IN)
+	tw.tween_property(title, "modulate:a", 0.0, 0.5).set_delay(0.25)
+	tw.tween_property(sub, "modulate:a", 0.0, 0.5).set_delay(0.25)
+	tw.set_parallel(false)
+	tw.tween_callback(func() -> void: dust.emitting = false)
+	tw.tween_callback(finish)
+
+
+## Geliştirici modu (logoya 7 kez dokun + PIN): tüm kamyonlar satın almadan seçilir
+const DEV_PIN := "4848"
+
+
+func set_dev_mode(on: bool) -> void:
+	dev_mode = on
+	if not dev_mode and not owned.has(selected):
+		selected = "tosun"
+		_build_truck()
+	_save()
+	if menu:
+		menu.refresh()
+	_toast("Geliştirici modu " + ("AÇIK: tüm kamyonlar seçilebilir" if on else "KAPALI"), 2.2)
 
 
 ## Android geri tuşu: oyunda duraklat, duraklatmada devam et, menüde çık
@@ -250,6 +369,8 @@ func _notification(what: int) -> void:
 		get_tree().quit()
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if ads != null and ads.is_showing():
+			return
+		if rescue_panel != null:
 			return
 		if state == "play" and pause_panel == null:
 			pause_game()
@@ -514,7 +635,10 @@ func _check_game_over(delta: float) -> void:
 	if truck.is_flipped():
 		flip_t += delta
 		if flip_t >= flip_time_limit:
-			_end("ŞASİ HASARI", "Kamyon ters döndü ve %d saniye öyle kaldı." % int(flip_time_limit))
+			if flip_rescues < MAX_RESCUES:
+				_offer_rescue("flip")
+			else:
+				_end("ŞASİ HASARI", "Kamyon ters döndü ve %d saniye öyle kaldı." % int(flip_time_limit))
 			return
 	else:
 		flip_t = 0.0
@@ -525,7 +649,10 @@ func _check_game_over(delta: float) -> void:
 		empty_t = empty_t + delta if spd < 40.0 else 0.0
 		empty_total += delta
 		if empty_t >= 2.0 or empty_total >= 10.0:
-			_end("YAKIT BİTTİ", "Depo boşaldı, kamyon yolda kaldı.")
+			if fuel_ads < FUEL_AD_STEPS.size():
+				_offer_rescue("fuel")
+			else:
+				_end("YAKIT BİTTİ", "Depo boşaldı, kamyon yolda kaldı.")
 			return
 
 	if cargo.is_empty():
@@ -534,6 +661,113 @@ func _check_game_over(delta: float) -> void:
 
 	if truck.body.global_position.y > terrain.base_y + 3000.0:
 		_end("ŞASİ HASARI", "Kamyon yoldan çıktı.")
+
+
+# ======================= REKLAMLA KURTARMA =======================
+## Kamyon devrilince ya da yakıt bitince: "Reklam izle, devam et" teklifi
+const FUEL_AD_STEPS: Array = [0.10, 0.15, 0.25]   # 1. reklam %10, 3 reklamda toplam %50 (yarım depo)
+const MAX_RESCUES := 3
+var fuel_ads: int = 0
+var flip_rescues: int = 0
+var rescue_panel: Control
+
+
+func _offer_rescue(kind: String) -> void:
+	if rescue_panel != null or game_over:
+		return
+	get_tree().paused = true
+	gas_btn.visible = false
+	brake_btn.visible = false
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.62)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ui.add_child(dim)
+	rescue_panel = dim
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.add_child(center)
+	var panel := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.09, 0.11, 0.16, 0.97)
+	sb.set_corner_radius_all(22)
+	sb.border_color = Color(0.95, 0.6, 0.15)
+	sb.set_border_width_all(3)
+	sb.content_margin_left = 34
+	sb.content_margin_right = 34
+	sb.content_margin_top = 20
+	sb.content_margin_bottom = 22
+	panel.add_theme_stylebox_override("panel", sb)
+	center.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	panel.add_child(v)
+	var title: String = "YAKIT BİTTİ!" if kind == "fuel" else "KAMYON DEVRİLDİ!"
+	var t := _label(v, title, 40)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_color_override("font_color", Color(1, 0.45, 0.3))
+	var info: String
+	var btn_text: String
+	if kind == "fuel":
+		var add: float = float(FUEL_AD_STEPS[fuel_ads])
+		var total: float = 0.0
+		for i in range(fuel_ads + 1):
+			total += float(FUEL_AD_STEPS[i])
+		info = "Reklam izle, depoya %%%d yakıt koyalım.\n3 reklamda depo yarıya kadar dolar (%d/3)." % [int(add * 100.0), fuel_ads + 1]
+		btn_text = "▶  Reklam izle: +%%%d yakıt" % int(add * 100.0)
+	else:
+		info = "Reklam izle, kamyonu düzeltip yola devam et.\n(%d/%d)" % [flip_rescues + 1, MAX_RESCUES]
+		btn_text = "▶  Reklam izle: kamyonu düzelt"
+	var d := _label(v, info, 22)
+	d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var watch := func() -> void:
+		var ok := func() -> void:
+			_apply_rescue(kind)
+		var cancel := func() -> void:
+			pass
+		ads.show_rewarded(ok, cancel)
+	_menu_btn(v, btn_text, Color(0.15, 0.6, 0.3), watch)
+	var give_up := func() -> void:
+		_close_rescue()
+		if kind == "fuel":
+			_end("YAKIT BİTTİ", "Depo boşaldı, kamyon yolda kaldı.")
+		else:
+			_end("ŞASİ HASARI", "Kamyon ters döndü ve %d saniye öyle kaldı." % int(flip_time_limit))
+	_menu_btn(v, "Hayır, oyunu bitir", Color(0.35, 0.37, 0.45), give_up)
+
+
+func _apply_rescue(kind: String) -> void:
+	if kind == "fuel":
+		truck.fuel = minf(truck.fuel + truck.fuel_capacity * float(FUEL_AD_STEPS[fuel_ads]), truck.fuel_capacity)
+		fuel_ads += 1
+		empty_t = 0.0
+		empty_total = 0.0
+		_toast("Yakıt eklendi! Devam!", 1.6)
+	else:
+		flip_rescues += 1
+		var x: float = truck.body.global_position.x
+		truck.upright_at(Vector2(x, terrain.height_at(x) - 100.0 - (truck.wheel_r - 26.0)))
+		# kasada kalan yükleri yerine koy
+		var slots: Array = [Vector2(-86, -34), Vector2(-42, -34), Vector2(2, -34), Vector2(-64, -62), Vector2(-20, -62)]
+		for i in range(cargo.size()):
+			var c: RigidBody2D = cargo[i]
+			c.global_transform = Transform2D(0.0, truck.bed_to_global(slots[i % slots.size()]))
+			c.linear_velocity = Vector2.ZERO
+			c.angular_velocity = 0.0
+		_out_time.clear()
+		flip_t = 0.0
+		_toast("Kamyon düzeltildi! Devam!", 1.6)
+	_close_rescue()
+
+
+func _close_rescue() -> void:
+	if rescue_panel != null:
+		rescue_panel.queue_free()
+		rescue_panel = null
+	gas_btn.visible = true
+	brake_btn.visible = true
+	_touches.clear()
+	_mouse_down = false
+	get_tree().paused = false
 
 
 func _end(title: String, detail: String) -> void:
@@ -550,7 +784,6 @@ func _end(title: String, detail: String) -> void:
 	var new_best: bool = dist_m > best_m
 	best_m = maxf(best_m, dist_m)
 	_save()
-	snd.sfx("oyun_bitti")
 	snd.engine(false, 0.0, 0.0, 1.0)
 	_show_game_over(title, detail, dist_m, dist_bonus, new_best)
 	get_tree().paused = true
@@ -586,7 +819,7 @@ func _bank_run() -> void:
 
 # ======================= DURAKLATMA MENÜSÜ =======================
 func pause_game() -> void:
-	if state != "play" or game_over or pause_panel != null:
+	if state != "play" or game_over or pause_panel != null or rescue_panel != null:
 		return
 	get_tree().paused = true
 	gas_btn.visible = false
@@ -872,20 +1105,41 @@ func _build_ui() -> void:
 	_hud_nodes = [top, warn_lbl, brake_btn, gas_btn, gauges, turbo_btn, zone_lbl]
 
 
-## Telefon çentiği / yuvarlak köşeler: arayüzü güvenli alanın içine al (sadece mobilde)
+## Telefon çentiği / yuvarlak köşeler: arayüzü güvenli alanın içine al (sadece mobilde).
+## Ekran döndürülünce yeniden hesaplanır; yatayda sadece yanlardan, dikeyde sadece üstten pay bırakılır
+## (üst bilgi şeridi her zaman en üstte kalır).
 func _apply_safe_area(root: Control) -> void:
+	if not get_viewport().size_changed.is_connected(_on_resized):
+		get_viewport().size_changed.connect(_on_resized)
+	root.offset_left = 0.0
+	root.offset_top = 0.0
+	root.offset_right = 0.0
+	root.offset_bottom = 0.0
 	if not OS.has_feature("mobile"):
 		return
 	var safe: Rect2i = DisplayServer.get_display_safe_area()
 	var win: Vector2i = DisplayServer.window_get_size()
+	var scr: Vector2i = DisplayServer.screen_get_size()
 	if win.x <= 0 or win.y <= 0 or safe.size.x <= 0 or safe.size.y <= 0:
+		return
+	# döndürme sırasında eski/yeni boyutlar karışıksa uygulama
+	if (win.x > win.y) != (scr.x > scr.y) or (safe.size.x > safe.size.y) != (win.x > win.y):
 		return
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	var k: Vector2 = vp / Vector2(win)
-	root.offset_left = clampf(float(safe.position.x) * k.x, 0.0, 120.0)
-	root.offset_top = clampf(float(safe.position.y) * k.y, 0.0, 120.0)
-	root.offset_right = -clampf(float(win.x - safe.end.x) * k.x, 0.0, 120.0)
-	root.offset_bottom = -clampf(float(win.y - safe.end.y) * k.y, 0.0, 120.0)
+	if win.x > win.y:
+		root.offset_left = clampf(float(safe.position.x) * k.x, 0.0, 90.0)
+		root.offset_right = -clampf(float(win.x - safe.end.x) * k.x, 0.0, 90.0)
+	else:
+		root.offset_top = clampf(float(safe.position.y) * k.y, 0.0, 60.0)
+
+
+func _on_resized() -> void:
+	if _ui_root == null:
+		return
+	_apply_safe_area(_ui_root)
+	# Android döndürmeden sonra güvenli alanı biraz geç bildirir: kısa süre sonra bir kez daha
+	get_tree().create_timer(0.4, true).timeout.connect(func() -> void: _apply_safe_area(_ui_root))
 
 
 func _bar_block(parent: Control, title: String, col: Color) -> ProgressBar:
@@ -1078,7 +1332,7 @@ func upgrade_cost(truck_id: String, up_id: String) -> int:
 func buy_truck(id: String) -> void:
 	var def: Dictionary = TruckCatalog.by_id(id)
 	var price: int = int(def["price"])
-	if owned.has(id):
+	if owned.has(id) or dev_mode:
 		select_truck(id)
 		return
 	if tokens < price:
@@ -1097,7 +1351,7 @@ func buy_truck(id: String) -> void:
 
 
 func select_truck(id: String) -> void:
-	if not owned.has(id):
+	if not owned.has(id) and not dev_mode:
 		return
 	selected = id
 	_save()
@@ -1342,8 +1596,9 @@ func _load() -> void:
 	owned = cf.get_value("oyun", "sahip", ["tosun"])
 	if not owned.has("tosun"):
 		owned.append("tosun")
+	dev_mode = bool(cf.get_value("ayar", "gelistirici", false))
 	selected = String(cf.get_value("oyun", "secili", "tosun"))
-	if not owned.has(selected):
+	if not owned.has(selected) and not dev_mode:
 		selected = "tosun"
 	for k in (cf.get_section_keys("garaj") if cf.has_section("garaj") else PackedStringArray()):
 		var key: String = k
@@ -1361,6 +1616,7 @@ func _save() -> void:
 	cf.set_value("oyun", "rekor", best_m)
 	cf.set_value("ayar", "muzik", music_on)
 	cf.set_value("ayar", "efekt", sfx_on)
+	cf.set_value("ayar", "gelistirici", dev_mode)
 	cf.set_value("oyun", "sahip", owned)
 	cf.set_value("oyun", "secili", selected)
 	for k in up_levels:

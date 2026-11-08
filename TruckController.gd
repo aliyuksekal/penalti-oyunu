@@ -71,7 +71,8 @@ var turbo_charge: float = 1.0     # 0..1, 1 = kullanıma hazır
 var _turbo_t: float = 0.0
 var flame: CPUParticles2D
 var engine_enabled: bool = true
-var menu_view: bool = false       # menüde kamera kamyonu sola alır
+var menu_view: bool = false       # menüde kamera
+var menu_panel_open: bool = false # menüde sağ panel açıksa kamyon sola kayar
 
 var fuel: float = 100.0
 var heat: float = 0.0
@@ -427,7 +428,7 @@ func _update_camera(delta: float) -> void:
 	var look: Vector2 = Vector2(clampf(v.x * 0.35, -120.0, 260.0) + 120.0, -70.0)
 	var z: float = base_zoom * lerpf(1.0, 0.72, clampf(v.length() / 1100.0, 0.0, 1.0))   # hızlanınca uzaklaş
 	if menu_view:
-		look = Vector2(330.0, -40.0)   # kamyon ekranın sol tarafında görünsün
+		look = Vector2(330.0 if menu_panel_open else 40.0, -40.0)   # panel açıksa kamyon sola
 		z = base_zoom * 1.3
 	camera.global_position = body.global_position + look
 	camera.zoom = camera.zoom.lerp(Vector2(z, z), clampf(delta * 1.5, 0.0, 1.0))
@@ -451,6 +452,19 @@ func speed_kmh() -> float:
 
 func refuel() -> void:
 	fuel = fuel_capacity
+
+
+## Reklamla kurtarma: kamyonu verilen noktada dik ve durmuş halde yeniden yerleştir
+func upright_at(p: Vector2) -> void:
+	body.global_transform = Transform2D(0.0, p)
+	body.linear_velocity = Vector2.ZERO
+	body.angular_velocity = 0.0
+	for i in range(wheels.size()):
+		var side: float = -1.0 if i == 0 else 1.0
+		var w: RigidBody2D = wheels[i]
+		w.global_transform = Transform2D(0.0, p + Vector2(WHEEL_X * side, wheel_y))
+		w.linear_velocity = Vector2.ZERO
+		w.angular_velocity = 0.0
 
 
 ## Kasanın içindeki bir noktanın dünya konumu (yük yerleştirmek için)

@@ -14,6 +14,9 @@ var _best_lbl: Label
 var _content: VBoxContainer
 var _scroll: ScrollContainer
 var _tab_btns: Dictionary = {}
+var _panel: PanelContainer
+var _logo_taps: int = 0
+var _logo_tap_t: float = 0.0
 
 const C_PANEL := Color(0.07, 0.09, 0.13, 0.92)
 const C_CARD := Color(0.13, 0.16, 0.22, 1.0)
@@ -32,7 +35,8 @@ func _ready() -> void:
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	logo.position = Vector2(30, 18)
 	logo.size = Vector2(112, 112)
-	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	logo.mouse_filter = Control.MOUSE_FILTER_STOP
+	logo.gui_input.connect(_on_logo_input)   # 7 dokunuş = geliştirici modu
 	add_child(logo)
 	var title := _lbl(self, "DROP ZERO", 58, Color(1.0, 0.62, 0.15))
 	title.position = Vector2(156, 20)
@@ -51,6 +55,29 @@ func _ready() -> void:
 	manager._style_btn(start, Color(0.15, 0.68, 0.3))
 	start.pressed.connect(func() -> void: manager.start_game())
 	add_child(start)
+	# mağaza ve geliştirme: paneli açar (menü açılınca panel kapalı, kamyon ortada)
+	var shop_btn := Button.new()
+	shop_btn.text = "MAĞAZA"
+	shop_btn.add_theme_font_size_override("font_size", 24)
+	shop_btn.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	shop_btn.offset_left = 400
+	shop_btn.offset_right = 610
+	shop_btn.offset_top = -136
+	shop_btn.offset_bottom = -86
+	manager._style_btn(shop_btn, Color(0.1, 0.55, 0.7))
+	shop_btn.pressed.connect(func() -> void: open_panel("trucks"))
+	add_child(shop_btn)
+	var up_btn := Button.new()
+	up_btn.text = "GELİŞTİRME"
+	up_btn.add_theme_font_size_override("font_size", 24)
+	up_btn.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	up_btn.offset_left = 400
+	up_btn.offset_right = 610
+	up_btn.offset_top = -80
+	up_btn.offset_bottom = -30
+	manager._style_btn(up_btn, Color(0.8, 0.5, 0.1))
+	up_btn.pressed.connect(func() -> void: open_panel("upgrades"))
+	add_child(up_btn)
 	_best_lbl = _lbl(self, "", 22, Color.WHITE)
 	_best_lbl.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_best_lbl.offset_left = 38
@@ -82,6 +109,8 @@ func _ready() -> void:
 	sb.content_margin_bottom = 12
 	panel.add_theme_stylebox_override("panel", sb)
 	add_child(panel)
+	_panel = panel
+	panel.visible = false
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	panel.add_child(v)
@@ -91,11 +120,21 @@ func _ready() -> void:
 	v.add_child(money)
 	_gold_lbl = _chip(money, C_GOLD)
 	_token_lbl = _chip(money, C_TOKEN)
+	var sp := Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	money.add_child(sp)
+	var close := Button.new()
+	close.text = "✕"
+	close.custom_minimum_size = Vector2(56, 48)
+	close.add_theme_font_size_override("font_size", 26)
+	manager._style_btn(close, Color(0.3, 0.32, 0.4))
+	close.pressed.connect(close_panel)
+	money.add_child(close)
 
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 8)
 	v.add_child(tabs)
-	for t in [["trucks", "KAMYONLAR"], ["upgrades", "GELİŞTİRME"], ["shop", "MAĞAZA"]]:
+	for t in [["trucks", "KAMYONLAR"], ["shop", "JETON"], ["upgrades", "GELİŞTİRME"]]:
 		var b := Button.new()
 		b.text = t[1]
 		b.custom_minimum_size = Vector2(0, 54)
@@ -118,6 +157,88 @@ func _ready() -> void:
 	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_content.add_theme_constant_override("separation", 10)
 	_scroll.add_child(_content)
+
+
+func open_panel(which: String) -> void:
+	tab = which
+	_panel.visible = true
+	manager.truck.menu_panel_open = true
+	refresh()
+
+
+func close_panel() -> void:
+	_panel.visible = false
+	manager.truck.menu_panel_open = false
+
+
+func _on_logo_input(e: InputEvent) -> void:
+	var pressed: bool = (e is InputEventMouseButton and (e as InputEventMouseButton).pressed) or (e is InputEventScreenTouch and (e as InputEventScreenTouch).pressed)
+	if not pressed:
+		return
+	var now: float = Time.get_ticks_msec() / 1000.0
+	if now - _logo_tap_t > 1.5:
+		_logo_taps = 0
+	_logo_tap_t = now
+	_logo_taps += 1
+	if _logo_taps >= 7:
+		_logo_taps = 0
+		_dev_dialog()
+
+
+## Geliştirici modu PIN penceresi
+func _dev_dialog() -> void:
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.7)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.add_child(center)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	center.add_child(box)
+	_lbl(box, "GELİŞTİRİCİ MODU", 34, Color(1.0, 0.62, 0.15))
+	if manager.dev_mode:
+		var off := Button.new()
+		off.text = "Geliştirici modunu KAPAT"
+		off.custom_minimum_size = Vector2(380, 60)
+		off.add_theme_font_size_override("font_size", 24)
+		manager._style_btn(off, Color(0.75, 0.25, 0.2))
+		var turn_off := func() -> void:
+			manager.set_dev_mode(false)
+			dim.queue_free()
+		off.pressed.connect(turn_off)
+		box.add_child(off)
+	else:
+		_lbl(box, "PIN gir:", 24, Color.WHITE)
+		var pin := LineEdit.new()
+		pin.secret = true
+		pin.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+		pin.custom_minimum_size = Vector2(380, 60)
+		pin.add_theme_font_size_override("font_size", 28)
+		box.add_child(pin)
+		var ok := Button.new()
+		ok.text = "AÇ"
+		ok.custom_minimum_size = Vector2(380, 60)
+		ok.add_theme_font_size_override("font_size", 24)
+		manager._style_btn(ok, Color(0.15, 0.6, 0.3))
+		var try_pin := func() -> void:
+			if pin.text.strip_edges() == manager.DEV_PIN:
+				manager.set_dev_mode(true)
+				dim.queue_free()
+			else:
+				pin.text = ""
+				pin.placeholder_text = "Yanlış PIN"
+		ok.pressed.connect(try_pin)
+		box.add_child(ok)
+		pin.grab_focus()
+	var cancel := Button.new()
+	cancel.text = "Vazgeç"
+	cancel.custom_minimum_size = Vector2(380, 50)
+	cancel.add_theme_font_size_override("font_size", 22)
+	manager._style_btn(cancel, Color(0.3, 0.32, 0.4))
+	cancel.pressed.connect(func() -> void: dim.queue_free())
+	box.add_child(cancel)
 
 
 func refresh() -> void:
@@ -185,8 +306,8 @@ func _build_trucks() -> void:
 			b.text = "SEÇİLİ"
 			b.disabled = true
 			manager._style_btn(b, Color(0.95, 0.55, 0.12))
-		elif own:
-			b.text = "SEÇ"
+		elif own or manager.dev_mode:
+			b.text = "SEÇ" if own else "SEÇ\n(geliştirici)"
 			manager._style_btn(b, Color(0.2, 0.45, 0.8))
 			b.pressed.connect(func() -> void: manager.select_truck(id))
 		else:

@@ -15,9 +15,10 @@ const PX_PER_M := 50.0          # 1 metre = 50 piksel
 @export var checkpoint_interval_m: float = 500.0
 @export var flat_half_width: float = 380.0     # teslimat alanının yarı genişliği (px)
 @export var flat_blend: float = 320.0          # düzlükten tepeye yumuşak geçiş (px)
-@export var max_difficulty_at_m: float = 2000.0 # bu mesafede zorluk tavan yapar
+@export var easy_until_m: float = 500.0         # ilk teslimata kadar yol rahat
+@export var max_difficulty_at_m: float = 6000.0 # zorluk yavaş yavaş artar, burada tavan yapar (yol sonsuz)
 @export var feature_len_m: float = 200.0        # her yol kesiminin uzunluğu (tümsek, dik yokuş, rampa...)
-@export var features_start_m: float = 150.0     # ilk engel bu mesafeden sonra
+@export var features_start_m: float = 600.0     # ilk engel (tümsek, yokuş...) ilk teslimattan sonra
 @export var noise_seed: int = 0                 # 0 = her oyunda farklı arazi
 
 @export_group("Renkler")
@@ -70,13 +71,15 @@ func _ready() -> void:
 
 
 ## 0 (başlangıç) .. 1 (en zor)
+## Hill Climb benzeri eğri: ilk 500 m kolay, 4.-5. teslimatta (2-2,5 km) zorluk belirgin, 6 km'de tavan
 func difficulty_at(x: float) -> float:
-	return clampf(maxf(x, 0.0) / PX_PER_M / max_difficulty_at_m, 0.0, 1.0)
+	var m: float = maxf(x, 0.0) / PX_PER_M
+	return clampf((m - easy_until_m) / (max_difficulty_at_m - easy_until_m), 0.0, 1.0)
 
 
 func _raw_height(x: float) -> float:
 	var d: float = difficulty_at(x)
-	var amp: float = lerpf(70.0, 320.0, d)        # tepe yüksekliği artar
+	var amp: float = lerpf(55.0, 320.0, d)        # tepe yüksekliği artar
 	var stretch: float = lerpf(1.0, 1.6, d)       # tepeler sıklaşır = daha dik
 	var big: float = _noise.get_noise_1d(x * stretch)
 	var bumps: float = _detail.get_noise_1d(x) * lerpf(3.0, 28.0, d)  # engebe artar
@@ -94,7 +97,7 @@ func feature_at(idx: int) -> Dictionary:
 		r.seed = hash("%d:%d" % [_seed, idx])
 		var d: float = difficulty_at(f["center"])
 		var kinds: Array = ["none", "bumps", "steep", "ramp", "rocky", "valley"]
-		var weights: Array = [lerpf(1.6, 0.25, d), 1.0, 0.8 + d * 2.0, 0.5 + d * 1.2, 0.4 + d * 1.6, 0.6 + d * 1.2]
+		var weights: Array = [lerpf(3.0, 0.25, d), 1.0, 0.5 + d * 2.3, 0.25 + d * 1.5, 0.15 + d * 1.9, 0.45 + d * 1.4]
 		var total: float = 0.0
 		for w in weights:
 			total += float(w)
@@ -108,20 +111,20 @@ func feature_at(idx: int) -> Dictionary:
 		match f["kind"]:
 			"bumps":
 				f["half"] = r.randf_range(500.0, 900.0)
-				f["h"] = lerpf(9.0, 28.0, d)
+				f["h"] = lerpf(6.0, 28.0, d)
 				f["period"] = r.randf_range(85.0, 140.0)
 			"steep":
 				f["half"] = lerpf(1000.0, 760.0, d)
-				f["h"] = lerpf(90.0, 470.0, d) * r.randf_range(0.85, 1.1)
+				f["h"] = lerpf(60.0, 470.0, d) * r.randf_range(0.85, 1.1)
 			"ramp":
 				f["half"] = 400.0
-				f["h"] = lerpf(45.0, 120.0, d)
+				f["h"] = lerpf(28.0, 120.0, d)
 			"rocky":
 				f["half"] = r.randf_range(600.0, 1000.0)
-				f["h"] = lerpf(12.0, 36.0, d)
+				f["h"] = lerpf(8.0, 36.0, d)
 			"valley":
 				f["half"] = lerpf(800.0, 620.0, d)
-				f["h"] = lerpf(80.0, 360.0, d)
+				f["h"] = lerpf(50.0, 360.0, d)
 	_features[idx] = f
 	return f
 
