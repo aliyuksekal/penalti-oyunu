@@ -120,6 +120,12 @@ jobs:
           ls -la build/screenshots
           if grep -E "SCRIPT ERROR|Invalid call|Invalid access|Invalid get|Invalid set|Invalid assignment" shots.log; then echo "::error::Çizim sırasında hata"; exit 1; fi
 
+      - name: Geçici test anahtarı (derlemeler arasında aynı kalsın)
+        uses: actions/cache@v4
+        with:
+          path: ~/.gecici-anahtar
+          key: gecici-anahtar-v1
+
       - name: İmza anahtarı
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -151,10 +157,20 @@ jobs:
           else
             echo "::warning::İmza gizli anahtarları yok - GEÇİCİ anahtarla imzalanıyor. Bu AAB Play Console'a yüklenmemeli."
             ALIAS=upload
-            PASS=$(openssl rand -hex 16)
-            echo "::add-mask::$PASS"
-            keytool -genkeypair -keystore "$KS" -storetype JKS -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass "$PASS" -keypass "$PASS" -dname "CN=temporary, O=matali, C=TR" > /dev/null 2>&1
+            mkdir -p ~/.gecici-anahtar
+            if [ -s ~/.gecici-anahtar/temp.jks ] && [ -s ~/.gecici-anahtar/pass ]; then
+              # her derlemede AYNI geçici anahtar: telefonda güncelleme olarak kurulabilsin
+              PASS=$(cat ~/.gecici-anahtar/pass)
+              echo "::add-mask::$PASS"
+              cp ~/.gecici-anahtar/temp.jks "$KS"
+            else
+              PASS=$(openssl rand -hex 16)
+              echo "::add-mask::$PASS"
+              keytool -genkeypair -keystore "$KS" -storetype JKS -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+                -storepass "$PASS" -keypass "$PASS" -dname "CN=temporary, O=matali, C=TR" > /dev/null 2>&1
+              cp "$KS" ~/.gecici-anahtar/temp.jks
+              printf '%s' "$PASS" > ~/.gecici-anahtar/pass
+            fi
             echo "SIGNING=temporary" >> $GITHUB_ENV
           fi
           echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$KS" >> $GITHUB_ENV
@@ -187,6 +203,7 @@ jobs:
           grep -q "targetSdkVersion:'36'" verify.txt
           "$BT/apksigner" verify --print-certs build/agir-yuk.apk | head -5 | tee -a verify.txt
           "$BT/zipalign" -c -P 16 4 build/agir-yuk.apk && echo "16 KB hizalama: OK" | tee -a verify.txt
+          echo "APK boyutu: $(( $(stat -c %s build/agir-yuk.apk) / 1048576 )) MB" | tee -a verify.txt
           jarsigner -verify build/agir-yuk.aab | tail -1 | tee -a verify.txt
           ls -la build
 
