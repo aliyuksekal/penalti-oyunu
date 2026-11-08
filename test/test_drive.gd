@@ -36,9 +36,11 @@ func _ready() -> void:
 		await _wait(6.0)
 		_check(main.gas_btn.down, "GAZ pedalı basılı görünüyor")
 		_check(main._distance_m() > 25.0, "dokunmatik gazla gidildi: %d m" % int(main._distance_m()))
-		e = e.duplicate()
-		e.pressed = false
-		Input.parse_input_event(e)
+		var up := InputEventScreenTouch.new()
+		up.index = 0
+		up.position = r.get_center()
+		up.pressed = false
+		Input.parse_input_event(up)
 		await _wait(0.3)
 		_check(not main.gas_btn.down, "parmak kalkınca gaz bırakıldı")
 		print("SONUÇ: dokunmatik bitti")
