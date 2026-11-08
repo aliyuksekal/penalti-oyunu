@@ -80,6 +80,20 @@ func _check(ok: bool, what: String) -> void:
 func _wait(s: float) -> void:
 	await get_tree().create_timer(s, true).timeout
 
+## Kamyonu tekerleriyle birlikte ters çevir (gerçek devrilme gibi, teker toprağa gömülmeden)
+func _flip_truck(tr) -> void:
+	var p: Vector2 = tr.body.global_position + Vector2(0, -170)
+	tr.body.global_transform = Transform2D(PI, p)
+	tr.body.linear_velocity = Vector2.ZERO
+	tr.body.angular_velocity = 0.0
+	for i in range(tr.wheels.size()):
+		var side: float = -1.0 if i == 0 else 1.0
+		var w: RigidBody2D = tr.wheels[i]
+		w.global_transform = Transform2D(0.0, p + Vector2(-tr.WHEEL_X * side, -tr.wheel_y))
+		w.linear_velocity = Vector2.ZERO
+		w.angular_velocity = 0.0
+
+
 func _shot(name: String) -> void:
 	if not ("--shot" in OS.get_cmdline_user_args()):
 		return
@@ -549,10 +563,7 @@ func _physics_process(delta: float) -> void:
 	if cs != "drive":
 		if t > 1.0 and t - delta <= 1.0:
 			if cs == "flip":
-				tr.body.global_rotation = PI
-				tr.body.global_position += Vector2(0, -120)
-				for w in tr.wheels:
-					w.global_position += Vector2(0, -400)
+				_flip_truck(tr)
 			elif cs == "fuel":
 				tr.fuel = 0.0
 			elif cs == "cargo":
@@ -571,8 +582,7 @@ func _physics_process(delta: float) -> void:
 				await get_tree().physics_frame
 				_check(cos(tr.body.global_rotation) > 0.9 and not get_tree().paused, "reklamla kamyon düzeltildi")
 				main.flip_rescues = 3
-				tr.body.global_rotation = PI
-				tr.body.global_position += Vector2(0, -120)
+				_flip_truck(tr)
 			return
 		if cs == "flip" and t > 1.0:
 			main._out_time.clear()
