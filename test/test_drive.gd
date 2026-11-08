@@ -214,6 +214,25 @@ func _controls() -> void:
 	await _wait(0.5)
 	_check(main.next_cp == cp0 + 1 and main.gold_run == gsave and main.terrain.get_seed() == seed0, "kaldığı yerden devam: bölge %d, altın %d" % [main.next_cp, main.gold_run])
 	_check(absf(main.truck.body.global_position.x - (main.terrain.checkpoint_x(cp0) + 80.0)) < 200.0, "kamyon son istasyonda")
+	# çukurda sıkışma: gaz verildiği halde kıpırdamıyorsa menüde reklam seçeneği, 50 m geriden başlar
+	await _wait(1.0)
+	var sx: float = main.truck.body.global_position.x
+	main._stuck_ref_x = sx
+	main._stuck_t = 0.0
+	for q in range(int(main.STUCK_SECONDS * 60.0) + 5):
+		main._update_stuck(1.0 / 60.0, sx, true)
+	_check(main.stuck, "hareket edemeyince sıkıştı sayıldı")
+	main.pause_game()
+	await get_tree().process_frame
+	_check(main.pause_panel != null and main.pause_panel.find_child("SikismaBtn", true, false) != null, "menüde 'reklam izle, 50 m geriden başla' var")
+	main.resume_game()
+	var n_cargo: int = main.cargo.size()
+	var fuel_b: float = main.truck.fuel
+	main.unstuck()
+	await _wait(0.6)
+	var back_px: float = sx - main.truck.body.global_position.x
+	_check(back_px > 2000.0 and back_px < 3100.0 and main.cargo.size() == n_cargo and absf(main.truck.fuel - fuel_b) < 5.0 and not main.stuck, "50 m geriden başladı (%.0f m), yük %d, yakıt korundu" % [back_px / 50.0, main.cargo.size()])
+	main.time_left = 100.0
 	# süre dolunca oyun biter
 	main.time_left = 0.5
 	await _wait(1.0)

@@ -611,23 +611,77 @@ func _recover_truck() -> void:
 	if _recoveries > 20 and state == "play":
 		_end("ŞASİ HASARI", "Kamyon yola geri konamadı.")
 		return
+	_rebuild_truck_at(_good_x if is_finite(_good_x) else 60.0)
+	flip_t = 0.0
+	if state == "play":
+		_toast("Kamyon yola geri kondu", 1.5)
+
+
+## Kamyonu x'te yeniden kur: yük sayısı, yakıt, hararet ve turbo aynen kalır
+func _rebuild_truck_at(x: float) -> void:
 	var keep: int = cargo.size()
 	var total: int = cargo_total
-	var x: float = _good_x if is_finite(_good_x) else 60.0
+	var fuel0: float = truck.fuel if is_finite(truck.fuel) else truck.fuel_capacity
+	var heat0: float = truck.heat
+	var turbo0: float = truck.turbo_charge
+	x = maxf(x, 60.0)
 	terrain.update_around(x)
 	_build_truck(x)
 	while cargo.size() > maxi(keep, 1):
 		var c: RigidBody2D = cargo.pop_back()
 		c.queue_free()
 	cargo_total = total
+	truck.fuel = clampf(fuel0, 0.0, truck.fuel_capacity)
+	truck.heat = clampf(heat0, 0.0, 100.0)
+	truck.turbo_charge = clampf(turbo0, 0.0, 1.0)
 	for d in dropped.duplicate():
 		if not is_instance_valid(d) or not d.global_position.is_finite():
 			dropped.erase(d)
 			if is_instance_valid(d):
 				d.queue_free()
+	_out_time.clear()
+	_good_x = x
+	_stuck_t = 0.0
+	stuck = false
+	_stuck_ref_x = x
+
+
+# ======================= ÇUKURDA SIKIŞMA =======================
+## Kamyon gaz/geri verildiği halde ileri de geri de gidemiyorsa "sıkıştı" sayılır.
+## O zaman menüde (çark ya da telefonun geri tuşu) "Reklam izle, 50 m geriden başla" çıkar.
+const STUCK_SECONDS := 4.0
+const STUCK_MOVE_PX := 70.0
+const UNSTUCK_BACK_M := 50.0
+var stuck: bool = false
+var _stuck_t: float = 0.0
+var _stuck_ref_x: float = 0.0
+var _stuck_hint_shown: bool = false
+
+
+func _update_stuck(delta: float, x: float, trying: bool) -> void:
+	if absf(x - _stuck_ref_x) > STUCK_MOVE_PX:
+		_stuck_ref_x = x
+		_stuck_t = 0.0
+		stuck = false
+		_stuck_hint_shown = false
+		return
+	if trying and not truck.overheated and truck.fuel > 0.0 and not truck.is_flipped():
+		_stuck_t += delta
+	if _stuck_t >= STUCK_SECONDS and not stuck:
+		stuck = true
+		if not _stuck_hint_shown:
+			_stuck_hint_shown = true
+			_toast("Sıkıştın! Çarka (ya da geri tuşuna) bas:\nReklam izle, 50 m geriden başla", 4.0)
+
+
+## Reklam izlendi: kamyonu 50 m geriye, yola koy
+func unstuck() -> void:
+	var x: float = truck.body.global_position.x
+	if not is_finite(x):
+		x = _good_x
+	_rebuild_truck_at(x - UNSTUCK_BACK_M * PX_PER_M)
 	flip_t = 0.0
-	if state == "play":
-		_toast("Kamyon yola geri kondu", 1.5)
+	_toast("50 m geriden devam!", 1.6)
 
 
 ## Kamyonu x noktasına koyarken gövde merkezinin y'si: iki tekerin de altındaki en yüksek
@@ -674,6 +728,10 @@ func start_game() -> void:
 	state = "play"
 	_recoveries = 0
 	_good_x = truck.body.global_position.x if truck.body != null else 60.0
+	stuck = false
+	_stuck_t = 0.0
+	_stuck_ref_x = _good_x
+	_stuck_hint_shown = false
 	time_left = _leg_time(next_cp)
 	truck.menu_view = false
 	truck.refuel()
@@ -743,6 +801,7 @@ func _physics_process(delta: float) -> void:
 		_end("TESLİMAT GECİKTİ", "Yük zamanında teslim edilemedi.")
 		return
 
+	_update_stuck(delta, x, gas or brk)
 	_check_cargo(delta)
 	_check_checkpoint()
 	_check_game_over(delta)
@@ -1123,6 +1182,16 @@ func pause_game() -> void:
 	panel.add_child(v)
 	var t := _label(v, "DURAKLATILDI", 40)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if stuck:
+		var hint := _label(v, "Kamyon sıkıştı, ileri de geri de gidemiyor.", 22)
+		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var watch := func() -> void:
+			var ok := func() -> void:
+				resume_game()
+				unstuck()
+			ads.show_rewarded(ok)
+		var sb_btn := _menu_btn(v, "▶  Reklam izle, 50 m geriden başla", Color(0.55, 0.25, 0.75), watch)
+		sb_btn.name = "SikismaBtn"
 	_menu_btn(v, "DEVAM ET  ▶", Color(0.15, 0.68, 0.3), resume_game)
 	var again := func() -> void:
 		_bank_run()
