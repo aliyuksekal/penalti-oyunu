@@ -1222,10 +1222,14 @@ func _station_refresh() -> void:
 		_station_info.text = "Yüklemek için yüke dokun. Hepsi sağlam giderse +%d bonus!" % perfect_bonus
 	else:
 		_station_info.text = "Kasada %d yük  •  Teslimde: +%d altın  (+istasyon ve süre bonusu)" % [n, station_value()]
+	var any_fit: bool = false
 	for b in _station_items:
 		var next: Array = _station_kinds.duplicate()
 		next.append(String(b.get_meta("tur")))
 		b.disabled = not station_fits(next)
+		any_fit = any_fit or not b.disabled
+	if n > 0 and not any_fit:
+		_station_info.text = "KASA DOLU  •  %d yük  •  Teslimde: +%d altın  (+bonus)" % [n, station_value()]
 	_station_go.disabled = n == 0
 
 
@@ -2015,18 +2019,25 @@ func open_settings() -> void:
 	_portrait_scale(panel)
 
 
-## Dikey ekranda pencere küçük kalıyordu: dikeyde %50 büyüt (yatayda aynı kalır)
+## Dikey ekranda pencere küçük kalıyordu: dikeyde %50 büyüt (yatayda aynı kalır).
+## Kapsayıcılar (CenterContainer) çocuğun ölçeğini sıfırladığı için, varsa kapsayıcının kendisi büyütülür.
 func _portrait_scale(panel: Control) -> void:
+	var target: Control = panel
+	var bottom: bool = true
+	if panel.get_parent() is CenterContainer:
+		target = panel.get_parent() as Control
+		bottom = false
 	var fit := func() -> void:
-		if not is_instance_valid(panel):
+		if not is_instance_valid(panel) or not is_instance_valid(target):
 			return
 		var vs: Vector2 = get_viewport().get_visible_rect().size
 		var k: float = 1.5 if vs.y > vs.x else 1.0
 		if k > 1.0 and panel.size.x > 0.0:
-			k = minf(k, (vs.x - 24.0) / panel.size.x)   # ekrandan taşmasın
-		panel.pivot_offset = panel.size * 0.5
-		panel.scale = Vector2(k, k)
+			k = maxf(1.0, minf(k, (vs.x - 24.0) / panel.size.x))   # ekrandan taşmasın
+		target.pivot_offset = Vector2(target.size.x * 0.5, target.size.y if bottom else target.size.y * 0.5)
+		target.scale = Vector2(k, k)
 	panel.resized.connect(fit)
+	target.resized.connect(fit)
 	get_viewport().size_changed.connect(fit)
 	var vp: Viewport = get_viewport()
 	var unhook := func() -> void:
