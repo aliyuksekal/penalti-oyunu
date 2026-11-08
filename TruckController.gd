@@ -140,17 +140,42 @@ func build(spawn: Vector2) -> void:
 	TruckArt.paint_body(body, model, wheel_r, wheel_y)
 
 	smoke = CPUParticles2D.new()
-	smoke.position = Vector2(36, -100)
-	smoke.amount = 14
-	smoke.lifetime = 0.9
-	smoke.direction = Vector2(-0.4, -1)
+	var ex: Array = model["extras"]
+	if ex.has("stack") or ex.has("stacks2"):
+		smoke.position = Vector2(36, TruckArt._roof_y(String(model["cab"])) - 24.0)   # dikey egzoz bacası
+		smoke.direction = Vector2(-0.4, -1)
+	else:
+		smoke.position = Vector2(-122, 6)   # arkadaki egzoz borusu
+		smoke.direction = Vector2(-1, -0.35)
+	smoke.amount = 26
+	smoke.lifetime = 1.3
 	smoke.spread = 18.0
 	smoke.gravity = Vector2(0, -40)
 	smoke.initial_velocity_min = 30.0
 	smoke.initial_velocity_max = 60.0
-	smoke.scale_amount_min = 4.0
-	smoke.scale_amount_max = 9.0
+	smoke.scale_amount_min = 0.35
+	smoke.scale_amount_max = 0.6
 	smoke.color = Color(0.35, 0.35, 0.38, 0.5)
+	# yumuşak yuvarlak duman topu (kodla üretilen doku), zamanla büyür ve solar
+	var puff_g := Gradient.new()
+	puff_g.set_color(0, Color(1, 1, 1, 1))
+	puff_g.set_color(1, Color(1, 1, 1, 0))
+	var puff := GradientTexture2D.new()
+	puff.gradient = puff_g
+	puff.fill = GradientTexture2D.FILL_RADIAL
+	puff.fill_from = Vector2(0.5, 0.5)
+	puff.fill_to = Vector2(1.0, 0.5)
+	puff.width = 32
+	puff.height = 32
+	smoke.texture = puff
+	var fade := Gradient.new()
+	fade.set_color(0, Color(1, 1, 1, 0.9))
+	fade.set_color(1, Color(1, 1, 1, 0))
+	smoke.color_ramp = fade
+	var grow := Curve.new()
+	grow.add_point(Vector2(0, 0.4))
+	grow.add_point(Vector2(1, 1.8))
+	smoke.scale_amount_curve = grow
 	smoke.local_coords = false
 	smoke.emitting = false
 	body.add_child(smoke)
@@ -294,8 +319,27 @@ func _update_engine(delta: float, throttle: float) -> void:
 			_overheat_t = overheat_cooldown
 	else:
 		heat = maxf(heat - heat_fall * delta, 0.0)
-	if smoke:
-		smoke.emitting = throttle != 0.0 and not overheated
+	_update_smoke(throttle)
+
+
+## Egzoz dumanı: rölantide ince ve açık; yokuşta gaza basınca koyu ve yoğun
+func _update_smoke(throttle: float) -> void:
+	if smoke == null:
+		return
+	var running: bool = engine_enabled and fuel > 0.0
+	smoke.emitting = running
+	if not running:
+		return
+	var climb: float = clampf(-sin(body.global_rotation) * 2.5, 0.0, 1.0)   # burun yukarı = yokuş
+	var load_k: float = clampf(maxf(throttle, 0.0) * (0.35 + 0.65 * climb) + (0.25 if overheated else 0.0), 0.0, 1.0)
+	var light := Color(0.82, 0.83, 0.86, 0.28)
+	var dark := Color(0.1, 0.1, 0.11, 0.8)
+	smoke.color = light.lerp(dark, load_k)
+	smoke.speed_scale = 0.6 + absf(throttle) * 0.6 + load_k * 0.6
+	smoke.scale_amount_min = 0.35 + load_k * 0.45
+	smoke.scale_amount_max = 0.6 + load_k * 0.8
+	smoke.initial_velocity_min = 25.0 + load_k * 40.0
+	smoke.initial_velocity_max = 50.0 + load_k * 70.0
 
 
 func _update_camera(delta: float) -> void:

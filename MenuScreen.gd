@@ -46,19 +46,17 @@ func _ready() -> void:
 	_best_lbl = _lbl(self, "", 22, Color.WHITE)
 	_best_lbl.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_best_lbl.offset_left = 38
-	_best_lbl.offset_top = -176
+	_best_lbl.offset_top = -178
 	_best_lbl.offset_bottom = -140
-	var night := Button.new()
-	night.text = "☾ / ☀"
-	night.add_theme_font_size_override("font_size", 26)
-	night.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	night.offset_left = 400
-	night.offset_right = 500
-	night.offset_top = -100
-	night.offset_bottom = -30
-	manager._style_btn(night, Color(0.2, 0.22, 0.3))
-	night.pressed.connect(func() -> void: manager._set_night(not manager.night))
-	add_child(night)
+	var toggles := HBoxContainer.new()
+	toggles.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	toggles.offset_left = 34
+	toggles.offset_right = 420
+	toggles.offset_top = -236
+	toggles.offset_bottom = -184
+	toggles.add_theme_constant_override("separation", 6)
+	add_child(toggles)
+	manager.add_settings_toggles(toggles)
 
 	# --- sağ panel ---
 	var panel := PanelContainer.new()

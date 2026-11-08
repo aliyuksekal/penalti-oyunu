@@ -23,6 +23,9 @@ func _ready() -> void:
 	elif cs == "alltrucks":
 		await _alltrucks()
 		get_tree().quit()
+	elif cs == "systems":
+		await _systems()
+		get_tree().quit()
 	elif cs == "touch":
 		# dokunmatik GAZ pedalı: pedalın ortasına parmak bas, 6 sn tut
 		main.start_game()
@@ -76,6 +79,60 @@ func _shot(name: String) -> void:
 		return
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png("res://" + name)
+
+func _systems() -> void:
+	# arazi: süreklilik ve kesim türleri
+	var tg = main.terrain
+	var worst: float = 0.0
+	var x: float = 0.0
+	var prev: float = tg.height_at(0.0)
+	while x < 3000.0 * 50.0:
+		x += 32.0
+		var h: float = tg.height_at(x)
+		worst = maxf(worst, absf(h - prev))
+		prev = h
+	_check(worst < 95.0, "arazi sürekli (32 px'te en büyük sıçrama %.0f px)" % worst)
+	var kinds := {}
+	for i in range(15):
+		var k: String = tg.feature_at(i)["kind"]
+		kinds[k] = int(kinds.get(k, 0)) + 1
+	print("  kesimler (ilk 3 km): ", kinds)
+	_check(kinds.size() >= 4, "en az 4 farklı yol türü var")
+	var h_early: float = 0.0
+	var h_late: float = 0.0
+	for i in range(3, 8):
+		h_early += float(tg.feature_at(i)["h"])
+	for i in range(40, 45):
+		h_late += float(tg.feature_at(i)["h"])
+	_check(h_late > h_early, "ileride engeller büyüyor (%.0f -> %.0f)" % [h_early, h_late])
+	# ses
+	_check(main.snd != null and AudioServer.get_bus_index("Muzik") >= 0 and AudioServer.get_bus_index("Efekt") >= 0, "ses kanalları kuruldu")
+	main.music_on = false
+	main.snd.music_on = false
+	main.snd.apply()
+	_check(AudioServer.is_bus_mute(AudioServer.get_bus_index("Muzik")), "müzik kapatılabiliyor")
+	main.music_on = true
+	main.snd.music_on = true
+	main.snd.apply()
+	# oyun + gösterge + duraklatma
+	main.start_game()
+	_key(true)
+	await _wait(4.0)
+	_check(main.speed_gauge.value > 5.0, "hız göstergesi: %.0f km/s" % main.speed_gauge.value)
+	_check(main.snd._engine.playing, "motor sesi çalıyor (perde %.2f)" % main.snd._engine.pitch_scale)
+	_check(main.snd._music.playing, "oyun müziği çalıyor")
+	main.pause_game()
+	await _wait(0.3)
+	var x0: float = main.truck.body.global_position.x
+	await _wait(1.0)
+	_check(get_tree().paused and main.pause_panel != null, "duraklatma menüsü açıldı")
+	_check(absf(main.truck.body.global_position.x - x0) < 1.0, "duraklayınca kamyon durdu")
+	main.resume_game()
+	await _wait(1.0)
+	_check(not get_tree().paused and main.truck.body.global_position.x > x0 + 5.0, "devam edince oyun sürüyor")
+	_check(main.truck.smoke.emitting, "egzoz dumanı çıkıyor")
+	print("SONUÇ: sistemler bitti")
+
 
 func _economy() -> void:
 	main.total_gold = 2000
@@ -176,6 +233,18 @@ func _shots() -> void:
 		await _shot("g_%s.png" % id)
 		_key(false)
 		main.open_menu()
+	main.owned.append("kartal")
+	main.select_truck("kartal")
+	main.start_game()
+	_key(true)
+	await _wait(6.0)
+	await _shot("g_gauges.png")
+	_key(false)
+	main.pause_game()
+	await _wait(0.4)
+	await _shot("g_pause.png")
+	main.resume_game()
+	main.open_menu()
 	main.night = false
 	main._set_night(true)
 	main.select_truck("dagkecisi" if main.owned.has("dagkecisi") else "titan")
@@ -184,7 +253,7 @@ func _shots() -> void:
 	await _shot("m_night.png")
 
 func _physics_process(delta: float) -> void:
-	if _done or not _driving or _case() in ["economy", "alltrucks", "shots", "touch"]:
+	if _done or not _driving or _case() in ["economy", "alltrucks", "shots", "touch", "systems"]:
 		return
 	t += delta
 	var tr = main.truck

@@ -15,7 +15,9 @@ const PX_PER_M := 50.0          # 1 metre = 50 piksel
 @export var checkpoint_interval_m: float = 500.0
 @export var flat_half_width: float = 380.0     # teslimat alanının yarı genişliği (px)
 @export var flat_blend: float = 320.0          # düzlükten tepeye yumuşak geçiş (px)
-@export var max_difficulty_at_m: float = 3000.0 # bu mesafede zorluk tavan yapar
+@export var max_difficulty_at_m: float = 2000.0 # bu mesafede zorluk tavan yapar
+@export var feature_len_m: float = 200.0        # her yol kesiminin uzunluğu (tümsek, dik yokuş, rampa...)
+@export var features_start_m: float = 120.0     # ilk engel bu mesafeden sonra
 @export var noise_seed: int = 0                 # 0 = her oyunda farklı arazi
 
 @export_group("Renkler")
@@ -28,6 +30,12 @@ var _noise := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
 var _chunks: Dictionary = {}   # int -> Node2D
 var _ground_mat := PhysicsMaterial.new()
+var _rock_noise := FastNoiseLite.new()
+var _features: Dictionary = {}   # kesim no -> {kind, center, half, h}
+var _seed: int = 0
+
+## Yol kesimi türleri ve uyarı tabelaları
+const SIGNS := {"bumps": "TÜMSEKLİ YOL", "steep": "DİK YOKUŞ", "ramp": "RAMPA!", "rocky": "KAYALIK", "valley": "ÇUKUR"}
 
 
 func _ready() -> void:
@@ -41,6 +49,10 @@ func _ready() -> void:
 	_detail.noise_type = FastNoiseLite.TYPE_SIMPLEX
 	_detail.frequency = 0.011
 	_detail.fractal_octaves = 1
+	_seed = s
+	_rock_noise.seed = s + 31
+	_rock_noise.noise_type = FastNoiseLite.TYPE_CELLULAR
+	_rock_noise.frequency = 0.03
 	_ground_mat.friction = 1.0
 	_ground_mat.bounce = 0.0
 	_build_start_wall()
@@ -58,7 +70,84 @@ func _raw_height(x: float) -> float:
 	var stretch: float = lerpf(1.0, 1.6, d)       # tepeler sıklaşır = daha dik
 	var big: float = _noise.get_noise_1d(x * stretch)
 	var bumps: float = _detail.get_noise_1d(x) * lerpf(3.0, 28.0, d)  # engebe artar
-	return base_y - big * amp + bumps
+	return base_y - big * amp + bumps + _feature_offset(x)
+
+
+## Kesim kesim yol karakteri: mesafe arttıkça zor kesimler hem sıklaşır hem büyür
+func feature_at(idx: int) -> Dictionary:
+	if _features.has(idx):
+		return _features[idx]
+	var L: float = feature_len_m * PX_PER_M
+	var f := {"kind": "none", "center": (float(idx) + 0.5) * L, "half": 0.0, "h": 0.0}
+	if float(idx) * L >= features_start_m * PX_PER_M:
+		var r := RandomNumberGenerator.new()
+		r.seed = hash("%d:%d" % [_seed, idx])
+		var d: float = difficulty_at(f["center"])
+		var kinds: Array = ["none", "bumps", "steep", "ramp", "rocky", "valley"]
+		var weights: Array = [lerpf(1.6, 0.25, d), 1.0, 0.8 + d * 2.0, 0.5 + d * 1.2, 0.4 + d * 1.6, 0.6 + d * 1.2]
+		var total: float = 0.0
+		for w in weights:
+			total += float(w)
+		var pick: float = r.randf() * total
+		for i in range(kinds.size()):
+			pick -= float(weights[i])
+			if pick <= 0.0:
+				f["kind"] = kinds[i]
+				break
+		f["center"] = float(f["center"]) + r.randf_range(-0.12, 0.12) * L
+		match f["kind"]:
+			"bumps":
+				f["half"] = r.randf_range(500.0, 900.0)
+				f["h"] = lerpf(9.0, 28.0, d)
+				f["period"] = r.randf_range(85.0, 140.0)
+			"steep":
+				f["half"] = lerpf(1000.0, 760.0, d)
+				f["h"] = lerpf(160.0, 470.0, d) * r.randf_range(0.85, 1.1)
+			"ramp":
+				f["half"] = 400.0
+				f["h"] = lerpf(45.0, 120.0, d)
+			"rocky":
+				f["half"] = r.randf_range(600.0, 1000.0)
+				f["h"] = lerpf(12.0, 36.0, d)
+			"valley":
+				f["half"] = lerpf(800.0, 620.0, d)
+				f["h"] = lerpf(130.0, 360.0, d)
+	_features[idx] = f
+	return f
+
+
+func _feature_offset(x: float) -> float:
+	var L: float = feature_len_m * PX_PER_M
+	var idx: int = floori(x / L)
+	var off: float = 0.0
+	for i in [idx - 1, idx, idx + 1]:
+		var f: Dictionary = feature_at(i)
+		if f["kind"] == "none":
+			continue
+		var c: float = f["center"]
+		var half: float = f["half"]
+		var h: float = f["h"]
+		var u: float = (x - c) / half
+		if absf(u) > 1.0:
+			continue
+		var win: float = clampf((1.0 - absf(u)) * 4.0, 0.0, 1.0)   # kenarlarda yumuşak giriş/çıkış
+		match f["kind"]:
+			"bumps":
+				off -= h * (0.5 - 0.5 * cos(TAU * (x - c) / float(f["period"]))) * win
+			"steep":
+				off -= h * (cos(PI * u) + 1.0) * 0.5
+			"valley":
+				off += h * (cos(PI * u) + 1.0) * 0.5
+			"rocky":
+				off -= h * absf(_rock_noise.get_noise_1d(x)) * 1.6 * win
+			"ramp":
+				# 300 px'lik yükselen rampa, sonra sert bir iniş: kamyon havalanır
+				var v: float = x - c
+				if v > -300.0 and v <= 0.0:
+					off -= h * smoothstep(-300.0, 0.0, v)
+				elif v > 0.0 and v < 70.0:
+					off -= h * (1.0 - v / 70.0)
+	return off
 
 
 func checkpoint_px() -> float:
@@ -160,6 +249,23 @@ func _build_chunk(i: int) -> Node2D:
 	grass.joint_mode = Line2D.LINE_JOINT_ROUND
 	root.add_child(grass)
 
+	# --- uyarı tabelaları ve kayalar ---
+	var L: float = feature_len_m * PX_PER_M
+	for fi in range(floori(x0 / L) - 1, floori((x0 + chunk_width) / L) + 2):
+		var f: Dictionary = feature_at(fi)
+		if f["kind"] == "none":
+			continue
+		var sx: float = float(f["center"]) - float(f["half"]) - 260.0
+		if sx >= x0 and sx < x0 + chunk_width and _flat_weight(sx) < 0.5:
+			_build_sign(root, sx, String(SIGNS[f["kind"]]))
+		if f["kind"] == "rocky":
+			var rr := RandomNumberGenerator.new()
+			rr.seed = hash("rock:%d:%d" % [_seed, i])
+			var rx: float = maxf(x0, float(f["center"]) - float(f["half"]))
+			while rx < minf(x0 + chunk_width, float(f["center"]) + float(f["half"])):
+				_build_rock(root, Vector2(rx, height_at(rx)), rr)
+				rx += rr.randf_range(70.0, 190.0)
+
 	# --- bu parçada teslimat noktası var mı? ---
 	var cp: float = checkpoint_px()
 	var k0: int = maxi(ceili(x0 / cp), 0)
@@ -226,6 +332,65 @@ func _build_station(root: Node2D, k: int, cx: float) -> void:
 	flag.color = Color(0.1, 0.75, 0.35)
 	st.add_child(flag)
 	_add_label(st, "TESLİMAT\n%d m" % int(k * checkpoint_interval_m), Vector2(-110, -380), 30)
+
+
+func _flat_weight(x: float) -> float:
+	var cp: float = checkpoint_px()
+	var k: int = maxi(roundi(x / cp), 0)
+	var dist: float = absf(x - float(k) * cp)
+	if dist < flat_half_width:
+		return 1.0
+	if dist < flat_half_width + flat_blend:
+		return 1.0 - smoothstep(0.0, 1.0, (dist - flat_half_width) / flat_blend)
+	return 0.0
+
+
+func _build_sign(root: Node2D, x: float, text: String) -> void:
+	var y: float = height_at(x)
+	var sg := Node2D.new()
+	sg.position = Vector2(x, y)
+	sg.z_index = -1
+	root.add_child(sg)
+	var pole := Line2D.new()
+	pole.points = PackedVector2Array([Vector2(0, 4), Vector2(0, -120)])
+	pole.width = 6.0
+	pole.default_color = Color(0.55, 0.57, 0.6)
+	sg.add_child(pole)
+	var border := Polygon2D.new()
+	border.polygon = PackedVector2Array([Vector2(0, -190), Vector2(40, -150), Vector2(0, -110), Vector2(-40, -150)])
+	border.color = Color(0.1, 0.1, 0.1)
+	sg.add_child(border)
+	var face := Polygon2D.new()
+	face.polygon = PackedVector2Array([Vector2(0, -184), Vector2(34, -150), Vector2(0, -116), Vector2(-34, -150)])
+	face.color = Color(1.0, 0.8, 0.1)
+	sg.add_child(face)
+	var ex := Line2D.new()
+	ex.points = PackedVector2Array([Vector2(0, -170), Vector2(0, -146)])
+	ex.width = 6.0
+	ex.default_color = Color(0.1, 0.1, 0.1)
+	sg.add_child(ex)
+	var dot := Polygon2D.new()
+	dot.polygon = PackedVector2Array([Vector2(-3, -138), Vector2(3, -138), Vector2(3, -132), Vector2(-3, -132)])
+	dot.color = Color(0.1, 0.1, 0.1)
+	sg.add_child(dot)
+	_add_label(sg, text, Vector2(-110, -240), 22)
+
+
+func _build_rock(root: Node2D, p: Vector2, r: RandomNumberGenerator) -> void:
+	var rad: float = r.randf_range(10.0, 26.0)
+	var pts := PackedVector2Array()
+	var n: int = 7
+	for i in range(n):
+		var a: float = PI + PI * float(i) / float(n - 1)
+		pts.append(Vector2(cos(a), sin(a) * 0.8) * rad * r.randf_range(0.75, 1.15))
+	pts.append(Vector2(rad * 0.9, 8))
+	pts.append(Vector2(-rad * 0.9, 8))
+	var rock := Polygon2D.new()
+	rock.polygon = pts
+	rock.position = p + Vector2(0, 6)
+	rock.color = Color(0.52, 0.5, 0.48).darkened(r.randf_range(0.0, 0.25))
+	rock.z_index = -1
+	root.add_child(rock)
 
 
 func _add_label(parent: Node, text: String, pos: Vector2, size: int) -> void:
