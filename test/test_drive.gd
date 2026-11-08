@@ -157,6 +157,13 @@ func _controls() -> void:
 	await _wait(1.5)
 	_check(not main.truck.turbo_active and main.truck.turbo_charge < 0.5, "turbo bitti, yeniden doluyor")
 	_key(false)
+	# turbo sonrası kamyon bazen devrilebiliyor (normal oyun); sonraki testler için düz yere koy
+	if main.rescue_panel != null:
+		main._close_rescue()
+	if main.truck.is_flipped() or main.cargo.size() < 2:
+		main._rebuild_truck_at(main.truck.body.global_position.x)
+		main.flip_t = 0.0
+		await _wait(0.5)
 	# gece/gündüz
 	var t0: float = main.day_t
 	await _wait(1.0)
