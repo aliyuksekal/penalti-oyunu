@@ -106,14 +106,18 @@ func _controls() -> void:
 	var v1: float = main.truck.body.linear_velocity.x
 	_check(v1 < v0 and not main.truck.reversing, "kısa basış fren yaptı (%.0f -> %.0f px/sn)" % [v0, v1])
 	# uzun basış: önce durur, sonra geri gider
-	var x0: float = main.truck.body.global_position.x
 	_press(KEY_LEFT, true)
-	await _wait(4.0)
+	var waited: float = 0.0
+	while not main.truck.reversing and waited < 5.0:
+		await get_tree().physics_frame
+		waited += 1.0 / 60.0
 	var rev: bool = main.truck.reversing
+	var xr: float = main.truck.body.global_position.x
+	await _wait(2.0)
 	var x1: float = main.truck.body.global_position.x
 	_press(KEY_LEFT, false)
-	_check(rev, "uzun basış geri vitese geçti")
-	_check(x1 < x0 - 30.0, "geri vitesle geri gitti (%.0f px)" % (x1 - x0))
+	_check(rev, "uzun basış geri vitese geçti (%.1f sn içinde)" % waited)
+	_check(x1 < xr - 30.0, "geri vitesle geri gitti (%.0f px)" % (x1 - xr))
 	await _wait(0.5)
 	# turbo
 	main.truck.turbo_charge = 1.0

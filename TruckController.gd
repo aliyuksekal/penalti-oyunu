@@ -34,7 +34,7 @@ const UPGRADE_STEP := {"engine": 0.12, "stiffness": 0.10, "damping": 0.15, "grip
 @export var wheel_mass: float = 0.6
 @export var max_wheel_speed: float = 38.0        # rad/sn (≈ 72 km/s)
 @export var reverse_ratio: float = 0.8
-@export var brake_decel: float = 55.0            # fren: tekerlek yavaşlaması (rad/sn²)
+@export var brake_decel: float = 110.0            # fren: tekerlek yavaşlaması (rad/sn²)
 @export var reverse_hold_time: float = 0.35      # bu kadar basılı tutunca fren -> geri vites
 @export_group("Turbo")
 @export var turbo_power: float = 1.8             # turbo sırasında güç çarpanı
