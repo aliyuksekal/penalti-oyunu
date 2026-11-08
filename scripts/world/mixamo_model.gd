@@ -207,7 +207,7 @@ func _add_gloves() -> void:
 		var tip: Vector3 = skel.get_bone_rest(cb).origin if cb >= 0 else Vector3(0, 9, 0)
 		var L: float = maxf(tip.length(), 0.001)
 		# eldiven: avuç yönünde uzamış elips (kemik biriminde)
-		mi.transform = Transform3D(Basis(Quaternion(Vector3.UP, tip / L)).scaled(Vector3(L * 0.95, L * 1.9, L * 0.62)), tip * 0.75)
+		mi.transform = Transform3D(Basis(Quaternion(Vector3.UP, tip / L)).scaled(Vector3(L * 0.85, L * 1.3, L * 0.45)), tip * 0.6)
 		att.add_child(mi)
 		_gloves.append(mi)
 
@@ -348,9 +348,14 @@ func set_state(s: String) -> void:
 	_hop = 0.0
 	match s:
 		"idle":
-			_play("idle")
+			ap.stop()
+			_play("idle", 0.0)
 		"keeper_ready":
-			_play("gk_idle", 0.2)
+			# yeni atış: önceki dalıştan kalan her şeyi sıfırla
+			ap.stop()
+			ap.speed_scale = 1.0
+			_dive_off = Vector3.ZERO
+			_play("gk_idle", 0.0)
 		"run":
 			var inf: Dictionary = _info.get("penalty_kick", {})
 			var c: float = float(inf.get("contact", 1.0))
