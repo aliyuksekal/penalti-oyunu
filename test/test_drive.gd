@@ -32,7 +32,7 @@ func _ready() -> void:
 		e.index = 0
 		e.position = r.get_center()
 		e.pressed = true
-		get_viewport().push_input(e)   # başsız modda Input kuyruğu boşaltılmadığı için doğrudan
+		get_viewport().push_input(e, true)   # konum zaten tuval koordinatında (başsız pencere ölçeğini atla)
 		await _wait(6.0)
 		_check(main.gas_btn.down, "GAZ pedalı basılı görünüyor")
 		_check(main._distance_m() > 25.0, "dokunmatik gazla gidildi: %d m" % int(main._distance_m()))
@@ -40,7 +40,7 @@ func _ready() -> void:
 		up.index = 0
 		up.position = r.get_center()
 		up.pressed = false
-		get_viewport().push_input(up)
+		get_viewport().push_input(up, true)
 		await _wait(0.3)
 		_check(not main.gas_btn.down, "parmak kalkınca gaz bırakıldı")
 		print("SONUÇ: dokunmatik bitti")
