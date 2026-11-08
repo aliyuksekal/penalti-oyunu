@@ -169,7 +169,8 @@ class Gauge extends Control:
 				var d2 := Vector2(cos(a2), sin(a2))
 				draw_line(c + d2 * (r - 10.0), c + d2 * (r - 4.0), Color(1, 1, 1, 0.6), 2.0)
 		var ts2: Vector2 = f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
-		draw_string(f, c + Vector2(-ts2.x * 0.5, r * 0.42), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.75, 0.3))
+		var ty: float = r * 0.42 if unit != "" else -r * 0.3   # hararette yazı ortanın üstünde (S/H ile çakışmasın)
+		draw_string(f, c + Vector2(-ts2.x * 0.5, ty), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.75, 0.3))
 		if unit != "":
 			var val: String = "%d %s" % [int(round(value)), unit]
 			var ts3: Vector2 = f.get_string_size(val, HORIZONTAL_ALIGNMENT_LEFT, -1, 20)
