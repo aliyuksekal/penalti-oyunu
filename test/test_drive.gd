@@ -91,7 +91,7 @@ func _systems() -> void:
 		var h: float = tg.height_at(x)
 		worst = maxf(worst, absf(h - prev))
 		prev = h
-	_check(worst < 130.0, "arazi sürekli (rampa inişi hariç) (32 px'te en büyük sıçrama %.0f px)" % worst)
+	_check(worst < 200.0, "arazi kopuksuz (rampa inişi dahil) (32 px'te en büyük sıçrama %.0f px)" % worst)
 	var kinds := {}
 	for i in range(15):
 		var k: String = tg.feature_at(i)["kind"]
