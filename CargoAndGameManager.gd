@@ -73,6 +73,10 @@ var empty_t: float = 0.0
 var empty_total: float = 0.0
 var game_over: bool = false
 var start_x: float = 0.0
+var _good_x: float = 60.0          # kamyonun en son sağlıklı (sonlu, yerde) konumu
+var _good_t: float = 0.0
+var _last_delivery_ms: int = -100000
+var _recoveries: int = 0
 var end_reason: String = ""
 
 # UI
@@ -576,6 +580,56 @@ func resume_run() -> void:
 	_toast("Kaldığın yerden devam: Bölge %d" % cp, 2.0)
 
 
+func _truck_finite() -> bool:
+	var parts: Array = [truck.body]
+	parts.append_array(truck.wheels)
+	for b in parts:
+		var rb: RigidBody2D = b
+		if not (rb.global_position.is_finite() and rb.linear_velocity.is_finite() and is_finite(rb.angular_velocity) and is_finite(rb.global_rotation)):
+			return false
+	return true
+
+
+## Fizik motoru patlamasın: aşırı hızları sınırla (gerçek oyunda asla bu kadar hızlanılmaz)
+func _limit_speeds() -> void:
+	var parts: Array = [truck.body]
+	parts.append_array(truck.wheels)
+	for b in parts:
+		var rb: RigidBody2D = b
+		if rb.linear_velocity.length() > 6000.0:
+			rb.linear_velocity = rb.linear_velocity.limit_length(6000.0)
+		rb.angular_velocity = clampf(rb.angular_velocity, -400.0, 400.0)
+	for c in cargo:
+		if is_instance_valid(c) and not c.global_position.is_finite():
+			c.global_position = truck.bed_to_global(Vector2(0, -40))
+			c.linear_velocity = Vector2.ZERO
+
+
+## Fizik bozulduysa: kamyonu son sağlam noktada yeniden kur, yük sayısını koru
+func _recover_truck() -> void:
+	_recoveries += 1
+	if _recoveries > 20 and state == "play":
+		_end("ŞASİ HASARI", "Kamyon yola geri konamadı.")
+		return
+	var keep: int = cargo.size()
+	var total: int = cargo_total
+	var x: float = _good_x if is_finite(_good_x) else 60.0
+	terrain.update_around(x)
+	_build_truck(x)
+	while cargo.size() > maxi(keep, 1):
+		var c: RigidBody2D = cargo.pop_back()
+		c.queue_free()
+	cargo_total = total
+	for d in dropped.duplicate():
+		if not is_instance_valid(d) or not d.global_position.is_finite():
+			dropped.erase(d)
+			if is_instance_valid(d):
+				d.queue_free()
+	flip_t = 0.0
+	if state == "play":
+		_toast("Kamyon yola geri kondu", 1.5)
+
+
 ## Kamyonu x noktasına koyarken gövde merkezinin y'si: iki tekerin de altındaki en yüksek
 ## zeminin üstünde kalır (yokuşta tekerlek toprağın içine gömülüp düşmesin)
 func safe_drop_y(x: float, gap: float) -> float:
@@ -618,6 +672,8 @@ func open_menu() -> void:
 
 func start_game() -> void:
 	state = "play"
+	_recoveries = 0
+	_good_x = truck.body.global_position.x if truck.body != null else 60.0
 	time_left = _leg_time(next_cp)
 	truck.menu_view = false
 	truck.refuel()
@@ -632,7 +688,18 @@ func start_game() -> void:
 func _physics_process(delta: float) -> void:
 	if game_over or truck.body == null:
 		return
+	# fizik bozulursa (sonsuz/NaN konum) kamyonu son sağlam noktaya geri koy;
+	# bu olmadan NaN konum "istasyonu geçti" sayılıp her karede altın yağabiliyordu
+	if not _truck_finite():
+		_recover_truck()
+		return
+	_limit_speeds()
 	var x: float = truck.body.global_position.x
+	if state == "play":
+		_good_t += delta
+		if _good_t >= 0.5 and truck.wheels_on_ground() and not truck.is_flipped():
+			_good_t = 0.0
+			_good_x = x
 	terrain.update_around(x)
 	if state != "play":
 		truck.gas_pressed = false
@@ -797,8 +864,14 @@ func zone_name(k: int) -> String:
 
 func _check_checkpoint() -> void:
 	var cx: float = terrain.checkpoint_x(next_cp)
-	if truck.body.global_position.x < cx:
+	var tx: float = truck.body.global_position.x
+	if not is_finite(tx) or tx < cx:
 		return
+	# iki teslimat arasında en az 3 sn (bir şey ters giderse bile altın yağmaz)
+	var now_ms: int = Time.get_ticks_msec()
+	if now_ms - _last_delivery_ms < 3000:
+		return
+	_last_delivery_ms = now_ms
 	# önce durumu ilerlet: sonraki satırlarda bir şey ters gitse bile bu teslimat
 	# bir daha sayılmaz (ödül tek sefer verilir)
 	var leg: int = next_cp
@@ -1118,7 +1191,10 @@ func add_settings_toggles(parent: Control) -> void:
 
 
 func _distance_m() -> float:
-	return maxf((truck.body.global_position.x - start_x) / PX_PER_M, 0.0)
+	var x: float = truck.body.global_position.x
+	if not is_finite(x):
+		x = _good_x
+	return clampf((x - start_x) / PX_PER_M, 0.0, 1000000.0)
 
 
 # ======================= GİRİŞ (çoklu dokunma) =======================
@@ -1915,7 +1991,8 @@ func _load() -> void:
 			return
 	total_gold = clampi(int(cf.get_value("oyun", "altin", 0)), 0, 1000000000)
 	tokens = clampi(int(cf.get_value("oyun", "jeton", 0)), 0, 10000000)
-	best_m = clampf(float(cf.get_value("oyun", "rekor", 0.0)), 0.0, 10000000.0)
+	best_m = float(cf.get_value("oyun", "rekor", 0.0))
+	best_m = clampf(best_m, 0.0, 10000000.0) if is_finite(best_m) else 0.0
 	music_on = bool(cf.get_value("ayar", "muzik", true))
 	sfx_on = bool(cf.get_value("ayar", "efekt", true))
 	var ids: Array = []

@@ -168,11 +168,14 @@ func _controls() -> void:
 	var g0: int = main.gold_run
 	var cp0: int = main.next_cp
 	main.time_left = 100.0
-	# istasyonun biraz gerisine taşı (yükler de kasaya), sonra gazla istasyondan geç
-	main.terrain.update_around(cx - 150.0)
-	main.truck.upright_at(Vector2(cx - 150.0, main.safe_drop_y(cx - 150.0, 100.0)))
-	main._repack_cargo()
-	main._out_time.clear()
+	# fizik bozulursa (NaN konum) altın yağmamalı: kamyon son sağlam yere geri konur
+	var gx: float = main._good_x
+	main.truck.body.global_position = Vector2(NAN, NAN)
+	await _wait(0.5)
+	_check(main.next_cp == cp0 and main.gold_run == g0 and main._recoveries >= 1 and main.truck.body.global_position.is_finite(), "bozulan fizik: altın yağmadı, kamyon geri kondu (x %.0f)" % gx)
+	# istasyonun biraz gerisinde yeniden kur (devam etme ile aynı yol), sonra gazla istasyondan geç
+	main.terrain.update_around(cx - 220.0)
+	main._build_truck(cx - 220.0)
 	await _wait(0.8)
 	_key(true)
 	var dw: float = 0.0
@@ -183,7 +186,7 @@ func _controls() -> void:
 	await _wait(0.5)
 	var g1: int = main.gold_run
 	var run_now: Dictionary = main._saved_run.duplicate()
-	print("  ok  (bilgi) teslimat sonrası: durum=%s bitti=%s neden=%s yük=%d kayıt=%s" % [main.state, main.game_over, main.end_reason, main.cargo.size(), str(run_now)])
+	print("  ok  (bilgi) teslimat sonrası: durum=%s bitti=%s neden=%s yük=%d kurtarma=%d kayıt=%s" % [main.state, main.game_over, main.end_reason, main.cargo.size(), main._recoveries, str(run_now)])
 	await _wait(1.0)
 	_check(main.next_cp == cp0 + 1, "istasyonda teslimat yapıldı")
 	_check(g1 > g0 and g1 - g0 <= 2000 and main.gold_run == g1, "ödül bir kez verildi ve sabit kaldı (+%d)" % (g1 - g0))
