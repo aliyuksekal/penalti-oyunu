@@ -359,7 +359,8 @@ func _play_intro() -> void:
 	dust.amount = 60
 	dust.lifetime = 1.1
 	dust.local_coords = false
-	dust.direction = Vector2(1, -0.35)
+	dust.direction = Vector2(-1, -0.45)      # kamyonun yerel ekseninde geriye (aynalı: ekranda sağa)
+	dust.position = Vector2(-78, 64)          # arka tekerin yere değdiği yer
 	dust.spread = 28.0
 	dust.initial_velocity_min = 60.0 * sc * 2.0
 	dust.initial_velocity_max = 220.0 * sc * 2.0
@@ -373,7 +374,7 @@ func _play_intro() -> void:
 	fade.set_color(1, Color(0.7, 0.45, 0.45, 0.0))
 	dust.color_ramp = fade
 	dust.emitting = false
-	world.add_child(dust)
+	truck_node.add_child(dust)
 	# köşe yuvarlatma
 	var rr: float = isz * 0.16
 	for corner in [Vector2(0, 0), Vector2(isz, 0), Vector2(isz, isz), Vector2(0, isz)]:
