@@ -1,0 +1,12 @@
+# Godot
+.godot/
+/android/
+*.translation
+export_credentials.cfg
+# derleme çıktıları
+/build/
+*.apk
+*.aab
+*.jks
+*.keystore
+/*.png
