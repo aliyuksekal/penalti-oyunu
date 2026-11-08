@@ -139,8 +139,16 @@ func _run() -> void:
 			var miss: float = Vector2(hw.x, hw.y).distance_to(tgt)
 			check(miss < 0.3, "dalış %s -> eller %s (sapma %.2f m)" % [str(tgt), str(Vector2(hw.x, hw.y)), miss])
 			check(signf(w2.keeper.position.x) == signf(tgt.x) or absf(tgt.x) < 0.9, "kaleci doğru yana dalıyor %s" % str(tgt))
+		# dalıştan sonra (gol yiyip "üzgün" denense de) yeni atışta kaleci ayağa kalkmalı
+		w2.keeper.set_state("sad")
+		await get_tree().create_timer(0.4).timeout
 		w2.keeper.position = Vector3(0, 0, 0.25)
 		w2.keeper.set_state("keeper_ready")
+		await get_tree().create_timer(0.7).timeout
+		var kk = w2.keeper
+		var hy: float = (kk.skel.global_transform * kk.skel.get_bone_global_pose(kk.bone("Head")).origin).y
+		print("  tanı: anim=", kk.ap.current_animation, " oynuyor=", kk.ap.is_playing(), " konum=", kk.ap.current_animation_position, " hız=", kk.ap.speed_scale, " durum=", kk.state, " baş y=", hy)
+		check(hy > 1.2, "dalıştan sonra kaleci ayağa kalktı (baş yüksekliği %.2f)" % hy)
 	# ekranlar x diller x temalar
 	for theme_mode in ["light", "dark"]:
 		Settings.set_value("theme", theme_mode)
