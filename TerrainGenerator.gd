@@ -252,18 +252,61 @@ func _build_chunk(i: int) -> Node2D:
 	dirt.vertex_colors = dvc
 	root.add_child(dirt)
 
-	var deep_pts := PackedVector2Array()
-	for p in top:
-		deep_pts.append(p + Vector2(0, 70))
-	deep_pts.append(Vector2(x0 + chunk_width, bottom_y))
-	deep_pts.append(Vector2(x0, bottom_y))
-	var deep := Polygon2D.new()
-	deep.polygon = deep_pts
-	var cvc := PackedColorArray()
-	for p in deep_pts:
-		cvc.append(zone_colors_at(p.x)[2])
-	deep.vertex_colors = cvc
-	root.add_child(deep)
+	# katmanlı toprak: üst toprak, koyu toprak, kil, çakıllı katman, kaya
+	# (her katman yüzeyi dalgalı takip eder; renkler bölgeye göre)
+	var strata: Array = [
+		[38.0, 1, 0.12, Color(0, 0, 0, 0)],
+		[95.0, 1, 0.0, Color(0.62, 0.36, 0.24)],     # kil (kızılımsı)
+		[165.0, 2, 0.0, Color(0, 0, 0, 0)],
+		[250.0, 2, 0.0, Color(0.42, 0.40, 0.38)],    # kaya katmanı
+		[370.0, 2, 0.35, Color(0, 0, 0, 0)],
+	]
+	for li in range(strata.size()):
+		var L: Array = strata[li]
+		var depth: float = L[0]
+		var pts := PackedVector2Array()
+		for p in top:
+			var wav: float = _detail.get_noise_1d(p.x * 0.6 + depth * 7.0) * 14.0
+			pts.append(p + Vector2(0, depth + wav))
+		pts.append(Vector2(x0 + chunk_width, bottom_y))
+		pts.append(Vector2(x0, bottom_y))
+		var layer := Polygon2D.new()
+		layer.polygon = pts
+		var vcs := PackedColorArray()
+		for p in pts:
+			var zc: Array = zone_colors_at(p.x)
+			var base: Color = zc[int(L[1])]
+			var tint: Color = L[3]
+			if tint.a > 0.0:
+				base = base.lerp(Color(tint.r, tint.g, tint.b), 0.45)
+			vcs.append(base.darkened(float(L[2])))
+		layer.vertex_colors = vcs
+		root.add_child(layer)
+		# katman sınırına ince koyu çizgi
+		var edge_ln := Line2D.new()
+		edge_ln.points = pts.slice(0, top.size())
+		edge_ln.width = 3.0
+		edge_ln.default_color = Color(0, 0, 0, 0.16)
+		root.add_child(edge_ln)
+	# toprağın içinde çakıl taşları
+	var pr := RandomNumberGenerator.new()
+	pr.seed = hash("cakil:%d:%d" % [_seed, i])
+	var px: float = x0
+	while px < x0 + chunk_width:
+		px += pr.randf_range(28.0, 70.0)
+		var surf: float = height_at(px)
+		var py: float = surf + pr.randf_range(24.0, 420.0)
+		var r: float = pr.randf_range(3.0, 9.0)
+		var peb := Polygon2D.new()
+		var pp := PackedVector2Array()
+		for k in range(7):
+			var a: float = TAU * float(k) / 7.0
+			pp.append(Vector2(cos(a) * r * pr.randf_range(0.8, 1.3), sin(a) * r * 0.75))
+		peb.polygon = pp
+		peb.position = Vector2(px, py)
+		var pc: Color = zone_colors_at(px)[1]
+		peb.color = pc.darkened(0.35) if pr.randf() < 0.6 else pc.lightened(0.18)
+		root.add_child(peb)
 	# çim çizgisi: bölge rengine göre degrade
 	var gg := Gradient.new()
 	var offs := PackedFloat32Array()
@@ -294,6 +337,20 @@ func _build_chunk(i: int) -> Node2D:
 	grass.gradient = gg
 	grass.joint_mode = Line2D.LINE_JOINT_ROUND
 	root.add_child(grass)
+	# çim tutamları
+	var tr := RandomNumberGenerator.new()
+	tr.seed = hash("cim:%d:%d" % [_seed, i])
+	var tx: float = x0
+	while tx < x0 + chunk_width:
+		tx += tr.randf_range(30.0, 90.0)
+		var ty: float = height_at(tx)
+		var gc: Color = zone_colors_at(tx)[0]
+		var tuft := Polygon2D.new()
+		var hh: float = tr.randf_range(7.0, 14.0)
+		tuft.polygon = PackedVector2Array([Vector2(-7, 2), Vector2(-5, -hh * 0.7), Vector2(-2, 0), Vector2(0, -hh), Vector2(2, 0), Vector2(5, -hh * 0.8), Vector2(7, 2)])
+		tuft.position = Vector2(tx, ty - 2)
+		tuft.color = gc.darkened(tr.randf_range(0.0, 0.25))
+		root.add_child(tuft)
 
 	# --- uyarı tabelaları ve kayalar ---
 	var L: float = feature_len_m * PX_PER_M

@@ -51,7 +51,7 @@ const UPGRADE_STEP := {"engine": 0.12, "stiffness": 0.10, "damping": 0.15, "grip
 @export var heat_rise: float = 5.5               # tam gazda hararet artışı (%/sn)
 @export var heat_fall: float = 11.0              # gaz bırakınca soğuma (%/sn)
 @export var overheat_cooldown: float = 3.0       # aşırı ısınınca motorun kesik kaldığı süre (sn)
-@export var base_zoom: float = 1.0
+@export var base_zoom: float = 1.35
 
 var body: RigidBody2D
 var wheels: Array[RigidBody2D] = []
@@ -425,11 +425,11 @@ func _update_camera(delta: float) -> void:
 	if camera == null:
 		return
 	var v: Vector2 = body.linear_velocity
-	var look: Vector2 = Vector2(clampf(v.x * 0.35, -120.0, 260.0) + 120.0, -70.0)
-	var z: float = base_zoom * lerpf(1.0, 0.72, clampf(v.length() / 1100.0, 0.0, 1.0))   # hızlanınca uzaklaş
+	var look: Vector2 = Vector2(clampf(v.x * 0.3, -100.0, 200.0) + 90.0, -60.0)
+	var z: float = base_zoom * lerpf(1.0, 0.8, clampf(v.length() / 1100.0, 0.0, 1.0))   # hızlanınca uzaklaş
 	if menu_view:
-		look = Vector2(330.0 if menu_panel_open else 40.0, -40.0)   # panel açıksa kamyon sola
-		z = base_zoom * 1.3
+		look = Vector2(250.0 if menu_panel_open else 40.0, -30.0)   # panel açıksa kamyon sola
+		z = base_zoom * 1.05
 	camera.global_position = body.global_position + look
 	camera.zoom = camera.zoom.lerp(Vector2(z, z), clampf(delta * 1.5, 0.0, 1.0))
 

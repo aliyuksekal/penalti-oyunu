@@ -1438,6 +1438,35 @@ func _build_background() -> void:
 	var pb := ParallaxBackground.new()
 	pb.layer = -5
 	add_child(pb)
+	# bulutlar: dağların arkasında, yavaşça süzülür
+	_cloud_layer = ParallaxLayer.new()
+	_cloud_layer.motion_scale = Vector2(0.06, 0.03)
+	_cloud_layer.motion_mirroring = Vector2(3600, 0)
+	pb.add_child(_cloud_layer)
+	var clouds := Node2D.new()
+	_cloud_layer.add_child(clouds)
+	_mountains.append(clouds)
+	var cr := RandomNumberGenerator.new()
+	cr.seed = 77
+	for ci in range(9):
+		var cloud := Node2D.new()
+		cloud.position = Vector2(float(ci) * 400.0 + cr.randf_range(0, 200), cr.randf_range(40, 260))
+		var sc: float = cr.randf_range(0.7, 1.5)
+		cloud.scale = Vector2(sc, sc)
+		var puffs: int = cr.randi_range(4, 6)
+		for k in range(puffs):
+			var px: float = (float(k) - float(puffs - 1) * 0.5) * 34.0
+			var r: float = cr.randf_range(26.0, 44.0) * (1.0 - absf(float(k) / float(puffs - 1) - 0.5) * 0.6)
+			var under := _disc(r, Color(0.82, 0.86, 0.93, 0.9))
+			under.position = Vector2(px, 6)
+			cloud.add_child(under)
+		for k in range(puffs):
+			var px2: float = (float(k) - float(puffs - 1) * 0.5) * 34.0
+			var r2: float = cr.randf_range(24.0, 40.0) * (1.0 - absf(float(k) / float(puffs - 1) - 0.5) * 0.6)
+			var top_puff := _disc(r2, Color(1, 1, 1, 0.95))
+			top_puff.position = Vector2(px2, -4 - cr.randf_range(0, 14))
+			cloud.add_child(top_puff)
+		clouds.add_child(cloud)
 	for li in range(2):
 		var pl := ParallaxLayer.new()
 		var far: bool = li == 0
@@ -1483,6 +1512,7 @@ var _moon: Node2D
 var _stars: Node2D
 var _mountains: Array[Node2D] = []
 var _sky_acc: float = 1.0
+var _cloud_layer: ParallaxLayer
 
 
 func _build_sky_objects(sky_layer: CanvasLayer) -> void:
@@ -1555,6 +1585,8 @@ func night_amount() -> float:
 
 func _update_sky(delta: float) -> void:
 	day_t = fmod(day_t + delta / DAY_LENGTH, 1.0)
+	if _cloud_layer:
+		_cloud_layer.motion_offset.x -= delta * 14.0   # rüzgâr
 	_sky_acc += delta
 	if _sky_acc < 0.1:
 		return
