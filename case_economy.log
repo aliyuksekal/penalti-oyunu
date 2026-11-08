@@ -1,0 +1,14 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+  ok  2000 altın -> 200 jeton (jeton=200, altın=0)
+  ok  ödüllü reklam +50 jeton (250)
+  ok  jeton yetmeyince kamyon alınmaz
+  ok  paket +300 jeton (550)
+  ok  Kartal alındı ve seçildi (jeton=50)
+  ok  kamyon yeniden kuruldu
+  ok  motor yükseltildi, 72 altın harcandı
+  ok  motor gücü arttı 80481 -> 90138
+  ok  yükseltme sadece o kamyona işledi
+  ok  kayıt geri yüklendi
+  ok  Kartal ile sürüş: 135 m
+SONUÇ: ekonomi bitti

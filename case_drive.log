@@ -1,0 +1,18 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+t=0  x=0 m  hız=0 km/s  yük=5  yakıt=100  hararet=0  altın=0  cp=1
+t=5  x=51 m  hız=48 km/s  yük=5  yakıt=91  hararet=27  altın=0  cp=1
+t=10  x=118 m  hız=51 km/s  yük=5  yakıt=82  hararet=55  altın=0  cp=1
+t=15  x=181 m  hız=47 km/s  yük=5  yakıt=72  hararet=82  altın=0  cp=1
+t=20  x=228 m  hız=22 km/s  yük=5  yakıt=66  hararet=90  altın=0  cp=1
+t=25  x=266 m  hız=38 km/s  yük=5  yakıt=58  hararet=91  altın=0  cp=1
+t=30  x=300 m  hız=13 km/s  yük=4  yakıt=54  hararet=72  altın=0  cp=1
+t=35  x=347 m  hız=35 km/s  yük=4  yakıt=44  hararet=99  altın=0  cp=1
+t=40  x=380 m  hız=37 km/s  yük=4  yakıt=40  hararet=80  altın=0  cp=1
+t=45  x=425 m  hız=13 km/s  yük=4  yakıt=32  hararet=93  altın=0  cp=1
+t=50  x=453 m  hız=33 km/s  yük=4  yakıt=26  hararet=88  altın=0  cp=1
+t=55  x=484 m  hız=-4 km/s  yük=4  yakıt=21  hararet=84  altın=0  cp=1
+t=60  x=524 m  hız=39 km/s  yük=5  yakıt=96  hararet=51  altın=95  cp=2
+t=65  x=569 m  hız=37 km/s  yük=5  yakıt=87  hararet=79  altın=95  cp=2
+t=70  x=604 m  hız=-4 km/s  yük=5  yakıt=79  hararet=94  altın=95  cp=2
+SONUÇ: mesafe=604 m  yük=5  teslimat=1  bitti=false 
