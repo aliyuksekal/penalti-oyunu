@@ -237,7 +237,11 @@ jobs:
           ls -la build
 
       - name: bundletool
-        run: curl -fsSL --retry 3 -o /tmp/bundletool.jar https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar
+        run: |
+          # önce Google Maven (güvenilir), olmazsa GitHub
+          curl -fsSL --retry 5 --retry-all-errors -o /tmp/bundletool.jar https://dl.google.com/dl/android/maven2/com/android/tools/build/bundletool/1.17.2/bundletool-1.17.2.jar \
+            || curl -fsSL --retry 5 --retry-all-errors -o /tmp/bundletool.jar https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar
+          java -jar /tmp/bundletool.jar version
 
       - name: KVM
         run: |
