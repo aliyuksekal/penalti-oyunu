@@ -16,6 +16,7 @@ func _ready() -> void:
 	add_child(main)
 	await get_tree().process_frame
 	main.ads.autoclose = true
+	main.ads.interstitial_min_gap = 0.0
 	main.ads.test_interstitial_seconds = 0.3
 	main.ads.test_rewarded_seconds = 0.3
 	var cs := _case()
@@ -155,14 +156,27 @@ func _controls() -> void:
 	await _wait(0.3)
 	_check(main.night_amount() < 0.05 and main._sun.visible and not main._moon.visible, "gündüz: güneş var")
 	_check(main.zone_name(1) == "Çayır Yolu" and main.zone_name(3) == "Orman Yolu", "bölge adları")
-	# ara gaz: 3 hızlı basış
-	for q in range(3):
+	# ara gaz: 3 hızlı basış -> bir ara gaz; tek basış -> yok
+	var bc0: int = main.blip_count
+	for q in range(2):
 		_key(true)
 		await get_tree().physics_frame
 		await get_tree().physics_frame
 		_key(false)
 		await _wait(0.12)
-	_check(main._tap_streak >= 3, "3 hızlı basış ara gazı tetikledi (seri %d)" % main._tap_streak)
+	_check(main.blip_count == bc0, "2 basışta ara gaz yok")
+	_key(true)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_key(false)
+	await _wait(0.12)
+	_check(main.blip_count == bc0 + 1, "3. hızlı basışta ara gaz verdi")
+	_key(true)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_key(false)
+	await _wait(0.6)
+	_check(main.blip_count == bc0 + 1, "bırakıp tekrar basınca (3 basış olmadan) ara gaz yok")
 	# teslimat ödülü tek sefer
 	var cx: float = main.terrain.checkpoint_x(main.next_cp)
 	var g0: int = main.gold_run
@@ -191,6 +205,32 @@ func _controls() -> void:
 	_check(main.next_cp == cp0 + 1, "istasyonda teslimat yapıldı")
 	_check(g1 > g0 and g1 - g0 <= 2000 and main.gold_run == g1, "ödül bir kez verildi ve sabit kaldı (+%d)" % (g1 - g0))
 	_check(main.has_saved_run() and int(main._saved_run["cp"]) == cp0 + 1, "istasyonda kayıt alındı")
+	# istasyonda kamyon durur, YÜKLE tuşu çıkar, yük seçilir
+	_check(main.at_station and main.cargo.is_empty(), "teslimattan sonra istasyonda bekliyor, kasa boş")
+	await _wait(1.5)
+	_check(main.load_btn != null and main.load_btn.visible and absf(main.truck.body.linear_velocity.x) < 25.0, "kamyon durdu, YÜKLE tuşu çıktı")
+	var tl0: float = main.time_left
+	main.open_station()
+	await get_tree().process_frame
+	_check(main.station_panel != null and main._station_items.size() >= 3, "yük listesi açıldı (%d çeşit)" % main._station_items.size())
+	var k0: String = String(main._station_offer[0])
+	var price: int = main.cargo_price(k0, main.next_cp)
+	main.station_add(k0)
+	main.station_add(k0)
+	main.station_add(k0)
+	await _wait(0.5)
+	_check(main.cargo.size() == 3 and main.station_value() == price * 3, "dokundukça yüklendi: 3 x %s = +%d altın" % [k0, price * 3])
+	for q in range(20):
+		main.station_add(k0)
+	_check(main._station_kinds.size() <= main.STATION_MAX_ITEMS and main.station_fits(main._station_kinds), "kasa dolunca fazlası eklenmiyor (%d)" % main._station_kinds.size())
+	_check(absf(main.time_left - tl0) < 0.01, "istasyondayken süre işlemiyor")
+	main.station_clear()
+	main.station_add(k0)
+	main.station_add(k0)
+	await _wait(0.4)
+	main.leave_station()
+	await _wait(0.3)
+	_check(not main.at_station and main.gas_btn.visible and main.cargo.size() == 2 and main.cargo_total == 2, "yola çıkıldı, 2 yük kasada")
 	# şifreli kayıt: düz metin olarak okunamaz, bozulursa yedekten açılır
 	main._save()
 	main._save()
@@ -212,6 +252,9 @@ func _controls() -> void:
 	main.gold_run = 0
 	main.resume_run()
 	await _wait(0.5)
+	_check(main.at_station, "devam edince istasyonda yük seçimi")
+	main.station_autoload()
+	await _wait(0.3)
 	_check(main.next_cp == cp0 + 1 and main.gold_run == gsave and main.terrain.get_seed() == seed0, "kaldığı yerden devam: bölge %d, altın %d" % [main.next_cp, main.gold_run])
 	_check(absf(main.truck.body.global_position.x - (main.terrain.checkpoint_x(cp0) + 80.0)) < 200.0, "kamyon son istasyonda")
 	# çukurda sıkışma: gaz verildiği halde kıpırdamıyorsa menüde reklam seçeneği, 50 m geriden başlar
@@ -457,6 +500,16 @@ func _shots() -> void:
 	await _wait(0.4)
 	await _shot("g_pause.png")
 	main.resume_game()
+	main._enter_station()
+	await _wait(1.6)
+	await _shot("g_station_btn.png")
+	main.open_station()
+	for k in main._station_offer.slice(0, 3):
+		main.station_add(String(k))
+		main.station_add(String(k))
+	await _wait(0.8)
+	await _shot("g_station.png")
+	main.station_autoload()
 	main.open_menu()
 	main.day_t = 0.75   # gece: ay ve yıldızlar
 	main._sky_acc = 1.0
@@ -464,6 +517,23 @@ func _shots() -> void:
 	main.open_menu()
 	await _wait(0.6)
 	await _shot("m_night.png")
+	# dikey ekran: ayarlar penceresi %50 büyük
+	get_window().size = Vector2i(720, 1280)
+	await _wait(0.6)
+	main.open_settings()
+	await _wait(0.5)
+	await _shot("m_settings_portrait.png")
+	if main.settings_panel != null:
+		main.settings_panel.queue_free()
+		main.settings_panel = null
+	main.start_game()
+	await _wait(0.5)
+	main.pause_game()
+	await _wait(0.5)
+	await _shot("g_pause_portrait.png")
+	main.resume_game()
+	get_window().size = Vector2i(1280, 720)
+	await _wait(0.4)
 
 func _physics_process(delta: float) -> void:
 	if _done or not _driving or _case() in ["economy", "alltrucks", "shots", "touch", "systems", "controls"]:
@@ -473,6 +543,9 @@ func _physics_process(delta: float) -> void:
 	if tr.body == null:
 		return
 	var cs: String = _case()
+	if main.at_station:
+		main.station_autoload()   # sürüş testinde istasyonda standart yükü al, devam et
+		return
 	if cs != "drive":
 		if t > 1.0 and t - delta <= 1.0:
 			if cs == "flip":

@@ -112,6 +112,23 @@ jobs:
           grep distributionUrl "$WP"
           grep -n "minifyEnabled\|targetSdk\|compileSdk" android/build/build.gradle android/build/config.gradle | head -20
 
+      - name: AdMob eklentisi (Android kütüphaneleri)
+        run: |
+          set -e
+          ADMOB_VER=v5.1.0
+          B=android-template-v${GODOT_VERSION}.zip
+          mkdir -p ~/admob-dl
+          Z=~/admob-dl/$B
+          if [ ! -s "$Z" ]; then
+            curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -o "$Z" "https://github.com/poingstudios/godot-admob-plugin/releases/download/${ADMOB_VER}/$B"
+          fi
+          echo "f7fdf644d50c0e231d8f02ae044057e489d0bcafcf50e908a4858477e7ee05ee  $Z" | sha256sum -c -
+          rm -rf addons/admob/android/bin && mkdir -p addons/admob/android/bin addons/admob/ios/bin
+          unzip -o -q "$Z" -d addons/admob/android/bin
+          printf 'const VERSION := "%s"\n' "$ADMOB_VER" > addons/admob/android/bin/package.gd
+          printf 'const VERSION := "%s"\n' "$ADMOB_VER" > addons/admob/ios/bin/package.gd
+          find addons/admob/android/bin -maxdepth 3 | head -30
+
       - name: Sürüm numarası
         run: |
           VC=$(( GITHUB_RUN_NUMBER + 10 ))
@@ -144,7 +161,7 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri libglx-mesa0 mesa-utils > /dev/null
           mkdir -p build/screenshots && touch build/.gdignore
-          timeout 300 xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 --resolution 1280x720 res://test/test.tscn -- --case=shots --shot 2>&1 | tee shots.log || true
+          timeout 300 xvfb-run -a -s "-screen 0 1600x1600x24" godot --path . --rendering-driver opengl3 --resolution 1280x720 res://test/test.tscn -- --case=shots --shot 2>&1 | tee shots.log || true
           mv -f *.png build/screenshots/ 2>/dev/null || true
           ls -la build/screenshots
           if grep -E "SCRIPT ERROR|Invalid call|Invalid access|Invalid get|Invalid set|Invalid assignment" shots.log; then echo "::error::Çizim sırasında hata"; exit 1; fi

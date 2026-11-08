@@ -28,3 +28,14 @@ common/physics_ticks_per_second=60
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/admob/plugin.cfg")
+
+[admob]
+
+general/android/enabled=true
+general/android/app_id="ca-app-pub-3940256099942544~3347511713"
+general/android/enable_r8_optimization=false
+general/ios/enabled=false

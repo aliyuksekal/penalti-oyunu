@@ -97,6 +97,7 @@ var _brake_hold: float = 0.0
 var _prev_gas: bool = false
 var _last_road: String = ""
 var _gas_release_t: float = -10.0
+var blip_count: int = 0
 var _tap_streak: int = 0
 var _beep_t: float = 0.0
 var _last_sec: int = -1
@@ -282,6 +283,9 @@ func _ready() -> void:
 				testing = true
 		if not testing:
 			_play_intro()
+	if _gold_fixed:
+		_save()
+		_toast("Eski sürümdeki hata yüzünden fazladan yazılan altın düzeltildi: %d altın" % total_gold, 5.0)
 
 
 ## Açılış animasyonu: simgedeki sahne (gece, yokuş, sandıklı kamyon) belirir; kamyon tozlu yolda
@@ -577,7 +581,8 @@ func resume_run() -> void:
 	if menu:
 		menu.close_panel()
 	start_game()
-	_toast("Kaldığın yerden devam: Bölge %d" % cp, 2.0)
+	_enter_station()   # son istasyonda: yükünü seç, yola çık
+	_toast("Kaldığın yerden devam: Bölge %d - yükünü seç" % cp, 2.5)
 
 
 func _truck_finite() -> bool:
@@ -627,6 +632,10 @@ func _rebuild_truck_at(x: float) -> void:
 	x = maxf(x, 60.0)
 	terrain.update_around(x)
 	_build_truck(x)
+	if at_station:
+		_respawn_station_cargo()
+		total = cargo_total
+		keep = cargo.size()
 	while cargo.size() > maxi(keep, 1):
 		var c: RigidBody2D = cargo.pop_back()
 		c.queue_free()
@@ -710,6 +719,7 @@ func _build_truck(at_x: float = 60.0) -> void:
 
 func open_menu() -> void:
 	state = "menu"
+	_reset_station()
 	truck.menu_view = true
 	for n in _hud_nodes:
 		n.visible = false
@@ -739,6 +749,7 @@ func start_game() -> void:
 		menu.visible = false
 	for n in _hud_nodes:
 		n.visible = true
+	_reset_station()
 	snd.play_music("yol")
 
 
@@ -763,6 +774,10 @@ func _physics_process(delta: float) -> void:
 		truck.gas_pressed = false
 		truck.brake_pressed = false
 		return
+	if at_station:
+		_hold_at_station(delta)
+		_update_sounds(delta)
+		return
 
 	var gas: bool = _pedal_down(gas_btn) or Input.is_physical_key_pressed(KEY_RIGHT) or Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_UP)
 	var brk: bool = _pedal_down(brake_btn) or Input.is_physical_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_DOWN)
@@ -774,6 +789,8 @@ func _physics_process(delta: float) -> void:
 		_tap_streak = _tap_streak + 1 if now_s - _gas_release_t < 0.45 else 1
 		if _tap_streak >= 3:
 			snd.blip()
+			blip_count += 1
+			_tap_streak = 0   # bir sonraki ara gaz için yine 3 hızlı basış gerekir
 	elif not gas and _prev_gas:
 		_gas_release_t = Time.get_ticks_msec() / 1000.0
 	_prev_gas = gas
@@ -842,14 +859,15 @@ func _process(delta: float) -> void:
 
 # ======================= YÜKLER =======================
 ## Kasayı yükle: her teslimatta yük listesi büyür ve çeşitlenir (CargoTypes.load_plan)
-func _spawn_cargo() -> void:
+func _spawn_cargo(chosen: Array = []) -> void:
 	var r := RandomNumberGenerator.new()
 	r.randomize()
-	var kinds: Array = CargoTypes.load_plan(next_cp, r)
+	var kinds: Array = chosen if not chosen.is_empty() else CargoTypes.load_plan(next_cp, r)
 	var pos: Array = CargoTypes.pack(kinds)
 	cargo_total = kinds.size()
 	for i in range(kinds.size()):
 		var c: RigidBody2D = CargoTypes.make(String(kinds[i]), r)
+		c.set_meta("deger", cargo_price(String(kinds[i]), next_cp))
 		c.contact_monitor = true
 		c.max_contacts_reported = 2
 		c.body_entered.connect(_on_cargo_hit.bind(c))
@@ -940,11 +958,11 @@ func _check_checkpoint() -> void:
 	var cargo_value: int = 0
 	for c in cargo:
 		if is_instance_valid(c):
-			cargo_value += clampi(int(c.get_meta("deger", gold_per_cargo)), 0, 100)
+			cargo_value += clampi(int(c.get_meta("deger", gold_per_cargo)), 0, 400)
 	var reward: int = cargo_value + station_bonus * leg + time_bonus
 	if intact == cargo_total:
 		reward += perfect_bonus
-	reward = clampi(reward, 0, 2000)   # bir teslimatta olabilecek en yüksek ödül
+	reward = clampi(reward, 0, 4000)   # bir teslimatta olabilecek en yüksek ödül
 	gold_run += reward
 	delivered += intact
 	truck.refuel()
@@ -961,8 +979,286 @@ func _check_checkpoint() -> void:
 		msg = "KUSURSUZ! " + msg
 	_toast(msg, 3.0)
 	snd.sfx("teslimat")
-	_spawn_cargo()   # yeni (daha büyük) yük
 	_save_run()      # kaldığı yerden devam için istasyonda kayıt
+	_enter_station() # kamyon durur, yeni yükü oyuncu seçer
+
+
+# ======================= İSTASYONDA YÜK SEÇME =======================
+## Teslimattan sonra kamyon durur, "YÜKLE" tuşu çıkar. Basınca o istasyondaki yükler ve
+## teslim edince her birinden kazanılacak altın görünür; dokundukça kasaya yüklenir.
+const STATION_MAX_ITEMS := 10
+var at_station: bool = false
+var station_panel: Control
+var load_btn: Button
+var _station_kinds: Array = []
+var _station_offer: Array = []
+var _station_info: Label
+var _station_go: Button
+var _station_items: Array = []
+
+
+## Bir yükün o bölgede teslim edilince kazandırdığı altın (ileride daha değerli)
+func cargo_price(kind: String, leg: int) -> int:
+	if not CargoTypes.TYPES.has(kind):
+		return 0
+	var base: float = float(CargoTypes.TYPES[kind]["value"])
+	return clampi(int(round(base * (1.0 + 0.2 * float(clampi(leg, 1, 40) - 1)))), 1, 400)
+
+
+## Kasa dolu mu: dizilince en üst sıra kasa duvarını çok aşmasın
+func station_fits(kinds: Array) -> bool:
+	if kinds.size() > STATION_MAX_ITEMS:
+		return false
+	var pos: Array = CargoTypes.pack(kinds)
+	for i in range(kinds.size()):
+		var sz: Vector2 = CargoTypes.TYPES[String(kinds[i])]["size"]
+		if float(pos[i].y) - sz.y * 0.5 < CargoTypes.BED_FLOOR - 72.0:
+			return false
+	return true
+
+
+func _station_offer_for(leg: int) -> Array:
+	var r := RandomNumberGenerator.new()
+	r.seed = hash("istasyon:%d:%d" % [terrain.get_seed(), leg])
+	var pool: Array = ["sandik", "cuval", "koli", "balya"]
+	if leg >= 2:
+		pool += ["varil"]
+	if leg >= 3:
+		pool += ["tomruk"]
+	if leg >= 4:
+		pool += ["tup"]
+	var offer: Array = ["sandik"]
+	while offer.size() < mini(5, pool.size()):
+		var k: String = pool[r.randi_range(0, pool.size() - 1)]
+		if not offer.has(k):
+			offer.append(k)
+	return offer
+
+
+func _enter_station() -> void:
+	at_station = true
+	_station_kinds = []
+	_station_offer = _station_offer_for(next_cp)
+	for c in cargo:
+		if is_instance_valid(c):
+			c.queue_free()
+	cargo.clear()
+	_out_time.clear()
+	cargo_total = 0
+	_set_drive_controls(false)
+	if load_btn == null:
+		load_btn = Button.new()
+		load_btn.text = "📦  YÜKLE"
+		load_btn.name = "YukleBtn"
+		load_btn.add_theme_font_size_override("font_size", 40)
+		_style_btn(load_btn, Color(0.95, 0.55, 0.1))
+		load_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		load_btn.offset_left = -170
+		load_btn.offset_right = 170
+		load_btn.offset_top = -150
+		load_btn.offset_bottom = -50
+		load_btn.pressed.connect(open_station)
+		ui.add_child(load_btn)
+	load_btn.visible = false   # kamyon durunca görünür
+
+
+func _reset_station() -> void:
+	at_station = false
+	_station_kinds = []
+	_station_items.clear()
+	if station_panel != null:
+		station_panel.queue_free()
+		station_panel = null
+	if load_btn != null:
+		load_btn.visible = false
+	if state == "play":
+		_set_drive_controls(true)
+
+
+func _set_drive_controls(on: bool) -> void:
+	if gas_btn:
+		gas_btn.visible = on
+	if brake_btn:
+		brake_btn.visible = on
+	if turbo_btn:
+		turbo_btn.visible = on
+	if _gas_hint:
+		_gas_hint.visible = on
+
+
+## İstasyonda: kamyonu yumuşakça durdur ve yerinde tut
+func _hold_at_station(delta: float) -> void:
+	truck.gas_pressed = false
+	truck.brake_pressed = false
+	var b: RigidBody2D = truck.body
+	b.linear_velocity = b.linear_velocity.move_toward(Vector2(0, b.linear_velocity.y), 900.0 * delta)
+	for w in truck.wheels:
+		w.angular_velocity = move_toward(w.angular_velocity, 0.0, 60.0 * delta)
+	if load_btn != null and station_panel == null:
+		load_btn.visible = absf(b.linear_velocity.x) < 25.0
+
+
+func open_station() -> void:
+	if not at_station or station_panel != null:
+		return
+	_click()
+	load_btn.visible = false
+	var panel := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.09, 0.11, 0.16, 0.95)
+	sb.set_corner_radius_all(20)
+	sb.border_color = Color(0.95, 0.6, 0.15)
+	sb.set_border_width_all(3)
+	sb.content_margin_left = 18
+	sb.content_margin_right = 18
+	sb.content_margin_top = 12
+	sb.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	panel.offset_left = -560
+	panel.offset_right = 560
+	panel.offset_top = -268
+	panel.offset_bottom = -12
+	panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	ui.add_child(panel)
+	station_panel = panel
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	panel.add_child(v)
+	var t := _label(v, "YÜK SEÇ  •  %s" % zone_name(next_cp), 28)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var grid := GridContainer.new()
+	grid.columns = 5
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	v.add_child(grid)
+	_station_items.clear()
+	for k in _station_offer:
+		var kind: String = k
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(200, 84)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_font_size_override("font_size", 22)
+		b.text = "%s\n+%d altın" % [CargoTypes.TYPES[kind]["name"], cargo_price(kind, next_cp)]
+		b.set_meta("tur", kind)
+		_style_btn(b, Color(0.2, 0.42, 0.7))
+		b.pressed.connect(station_add.bind(kind))
+		grid.add_child(b)
+		_station_items.append(b)
+	_station_info = _label(v, "", 22)
+	_station_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_child(row)
+	var clear := Button.new()
+	clear.text = "BOŞALT"
+	clear.custom_minimum_size = Vector2(220, 60)
+	clear.add_theme_font_size_override("font_size", 24)
+	_style_btn(clear, Color(0.35, 0.37, 0.45))
+	clear.pressed.connect(station_clear)
+	row.add_child(clear)
+	_station_go = Button.new()
+	_station_go.text = "YOLA ÇIK  ▶"
+	_station_go.custom_minimum_size = Vector2(300, 60)
+	_station_go.add_theme_font_size_override("font_size", 26)
+	_style_btn(_station_go, Color(0.15, 0.62, 0.3))
+	_station_go.pressed.connect(leave_station)
+	row.add_child(_station_go)
+	_portrait_scale(panel)
+	_station_refresh()
+
+
+## Dokununca bir yük daha kasaya
+func station_add(kind: String) -> void:
+	if not at_station or not _station_offer.has(kind):
+		return
+	var next: Array = _station_kinds.duplicate()
+	next.append(kind)
+	if not station_fits(next):
+		_toast("Kasa doldu!", 1.0)
+		return
+	_station_kinds = next
+	_click()
+	_respawn_station_cargo()
+	_station_refresh()
+
+
+func station_clear() -> void:
+	_station_kinds = []
+	_respawn_station_cargo()
+	_station_refresh()
+
+
+## Yükleri yeniden diz: tomruklar altta (uzun olduğu için), gerisi üstte
+func _respawn_station_cargo() -> void:
+	for c in cargo:
+		if is_instance_valid(c):
+			c.queue_free()
+	cargo.clear()
+	_out_time.clear()
+	var logs: Array = _station_kinds.filter(func(k): return k == "tomruk")
+	var rest: Array = _station_kinds.filter(func(k): return k != "tomruk")
+	var order: Array = logs + rest
+	cargo_total = order.size()
+	if not order.is_empty():
+		_spawn_cargo(order)
+
+
+func station_value() -> int:
+	var sum: int = 0
+	for k in _station_kinds:
+		sum += cargo_price(String(k), next_cp)
+	return sum
+
+
+func _station_refresh() -> void:
+	if _station_info == null or not is_instance_valid(_station_info):
+		return
+	var n: int = _station_kinds.size()
+	if n == 0:
+		_station_info.text = "Yüklemek için yüke dokun. Hepsi sağlam giderse +%d bonus!" % perfect_bonus
+	else:
+		_station_info.text = "Kasada %d yük  •  Teslimde: +%d altın  (+istasyon ve süre bonusu)" % [n, station_value()]
+	for b in _station_items:
+		var next: Array = _station_kinds.duplicate()
+		next.append(String(b.get_meta("tur")))
+		b.disabled = not station_fits(next)
+	_station_go.disabled = n == 0
+
+
+func leave_station() -> void:
+	if not at_station or _station_kinds.is_empty():
+		return
+	at_station = false
+	if station_panel != null:
+		station_panel.queue_free()
+		station_panel = null
+	if load_btn != null:
+		load_btn.visible = false
+	_station_items.clear()
+	_set_drive_controls(true)
+	_out_time.clear()
+	time_left = _leg_time(next_cp)
+	_stuck_ref_x = truck.body.global_position.x
+	_stuck_t = 0.0
+	_toast("Yola çık! %d yük, teslimde +%d altın" % [_station_kinds.size(), station_value()], 2.0)
+
+
+## Testler ve hızlı yükleme için: bölgenin standart yükünü koy ve yola çık
+func station_autoload() -> void:
+	if not at_station:
+		return
+	var r := RandomNumberGenerator.new()
+	r.seed = 7
+	_station_kinds = []
+	for k in CargoTypes.load_plan(next_cp, r):
+		var next: Array = _station_kinds.duplicate()
+		next.append(k)
+		if station_fits(next):
+			_station_kinds = next
+	_respawn_station_cargo()
+	leave_station()
 
 
 # ======================= OYUN SONU =======================
@@ -994,8 +1290,15 @@ func _check_game_over(delta: float) -> void:
 		_end("TÜM YÜKLER DÖKÜLDÜ", "Kasada hiç yük kalmadı (0/%d)." % cargo_total)
 		return
 
-	if truck.body.global_position.y > terrain.base_y + 3000.0:
-		_end("ŞASİ HASARI", "Kamyon yoldan çıktı.")
+	# kamyon zeminin altına düştüyse (fizik hatası) oyun bitmez: son sağlam yere geri konur
+	var bx: float = truck.body.global_position.x
+	if truck.body.global_position.y > terrain.height_at(bx) + 260.0:
+		_recover_truck()
+		return
+	for w in truck.wheels:
+		if w.global_position.y > terrain.height_at(w.global_position.x) + 200.0:
+			_recover_truck()
+			return
 
 
 # ======================= REKLAMLA KURTARMA =======================
@@ -1205,14 +1508,14 @@ func pause_game() -> void:
 	row.add_theme_constant_override("separation", 8)
 	v.add_child(row)
 	add_settings_toggles(row)
+	_portrait_scale(panel)
 
 
 func resume_game() -> void:
 	if pause_panel != null:
 		pause_panel.queue_free()
 		pause_panel = null
-	gas_btn.visible = true
-	brake_btn.visible = true
+	_set_drive_controls(not at_station)
 	_touches.clear()
 	_mouse_down = false
 	get_tree().paused = false
@@ -1707,6 +2010,28 @@ func open_settings() -> void:
 			settings_panel.queue_free()
 			settings_panel = null
 	_menu_btn(v, "KAPAT", Color(0.3, 0.32, 0.4), close)
+	_portrait_scale(panel)
+
+
+## Dikey ekranda pencere küçük kalıyordu: dikeyde %50 büyüt (yatayda aynı kalır)
+func _portrait_scale(panel: Control) -> void:
+	var fit := func() -> void:
+		if not is_instance_valid(panel):
+			return
+		var vs: Vector2 = get_viewport().get_visible_rect().size
+		var k: float = 1.5 if vs.y > vs.x else 1.0
+		if k > 1.0 and panel.size.x > 0.0:
+			k = minf(k, (vs.x - 24.0) / panel.size.x)   # ekrandan taşmasın
+		panel.pivot_offset = panel.size * 0.5
+		panel.scale = Vector2(k, k)
+	panel.resized.connect(fit)
+	get_viewport().size_changed.connect(fit)
+	var vp: Viewport = get_viewport()
+	var unhook := func() -> void:
+		if vp.size_changed.is_connected(fit):
+			vp.size_changed.disconnect(fit)
+	panel.tree_exiting.connect(unhook)
+	fit.call_deferred()
 
 
 func _click() -> void:
@@ -2037,6 +2362,9 @@ func _update_sky(delta: float) -> void:
 ## yüklenir. Anahtar cihaza özgü: kayıt başka telefona kopyalanıp kullanılamaz.
 ## Tüm değerler yüklenirken sınırlanır (eksi/aşırı altın, olmayan kamyon vb. kabul edilmez).
 const SAVE_FILE := "user://dropzero.dat"
+const GOLD_FIX_CAP := 20000     # hatadan önce dürüst oyunla ulaşılabilecek makul üst sınır
+const TOKEN_FIX_CAP := 2000
+var _gold_fixed: bool = false
 const SAVE_SALT := "dz-heavy-hauler-7f3c91"
 
 
@@ -2060,6 +2388,14 @@ func _load() -> void:
 			return
 	total_gold = clampi(int(cf.get_value("oyun", "altin", 0)), 0, 1000000000)
 	tokens = clampi(int(cf.get_value("oyun", "jeton", 0)), 0, 10000000)
+	# eski sürümlerdeki "altın yağması" hatasından kalan şişkin bakiyeyi bir kez düzelt
+	if int(cf.get_value("oyun", "surum", 1)) < 2:
+		if total_gold > GOLD_FIX_CAP:
+			total_gold = GOLD_FIX_CAP
+			_gold_fixed = true
+		if tokens > TOKEN_FIX_CAP:
+			tokens = TOKEN_FIX_CAP
+			_gold_fixed = true
 	best_m = float(cf.get_value("oyun", "rekor", 0.0))
 	best_m = clampf(best_m, 0.0, 10000000.0) if is_finite(best_m) else 0.0
 	music_on = bool(cf.get_value("ayar", "muzik", true))
@@ -2097,6 +2433,7 @@ func _load() -> void:
 
 func _save() -> void:
 	var cf := ConfigFile.new()
+	cf.set_value("oyun", "surum", 2)
 	cf.set_value("oyun", "altin", clampi(total_gold, 0, 1000000000))
 	cf.set_value("oyun", "jeton", clampi(tokens, 0, 10000000))
 	cf.set_value("oyun", "rekor", best_m)

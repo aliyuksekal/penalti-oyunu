@@ -8,3 +8,8 @@
 -dontwarn javax.annotation.**
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn org.jetbrains.annotations.**
+# AdMob eklentisi (kurallar .aar içinden de gelir; burada yalnızca zararsız uyarılar susturulur)
+-keep class * extends org.godotengine.godot.plugin.GodotPlugin { *; }
+-dontwarn kotlin.Metadata
+-dontwarn com.android.billingclient.**
+-dontwarn com.google.android.gms.**

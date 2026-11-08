@@ -44,9 +44,11 @@ func _ready() -> void:
 	title.position = Vector2(156, 20)
 	var sub := _lbl(self, "Heavy Hauler", 30, Color.WHITE)
 	sub.position = Vector2(160, 88)
+	var slogan := _lbl(self, "Sıfır düşüş, tam teslimat!", 24, Color(1.0, 0.85, 0.35))
+	slogan.position = Vector2(160, 126)
 
-	_best_lbl = _lbl(self, "", 22, Color.WHITE)
-	_best_lbl.position = Vector2(160, 128)
+	_best_lbl = _lbl(self, "", 20, Color.WHITE)
+	_best_lbl.position = Vector2(160, 160)
 
 	# --- ortada koca butonlar: BAŞLA, MAĞAZA, GELİŞTİRME ---
 	_buttons = HBoxContainer.new()

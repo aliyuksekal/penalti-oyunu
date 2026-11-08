@@ -18,6 +18,7 @@ var _blip: float = 0.0       # ara gaz
 var _blips: Array[AudioStream] = []
 var _blip_player: AudioStreamPlayer
 var _duck: float = 0.0
+var _thr: float = 0.0
 var _active: bool = false
 
 var music_on: bool = true
@@ -145,8 +146,10 @@ func engine(active: bool, rpm: float, throttle: float, delta: float) -> void:
 		if not p.playing:
 			p.volume_db = -60.0
 			p.play()
-	var target: float = clampf(maxf(rpm, throttle * 0.45), 0.0, 1.0)
-	var k: float = 3.0 if target > _rev else 1.5        # devir gaza hızlı çıkar, yavaş düşer
+	# devir asıl teker hızını izler; gaza basmak tek başına devri az yükseltir ve yavaşça,
+	# yoksa gazı bırakıp tekrar basmak da ara gaz gibi "vınn" diye duyuluyordu
+	var target: float = clampf(maxf(rpm, throttle * 0.22), 0.0, 1.0)
+	var k: float = 1.4 if target > _rev else 1.2
 	_rev = lerpf(_rev, target, clampf(delta * k, 0.0, 1.0))
 	_blip = maxf(_blip - delta * 2.0, 0.0)
 	# ara gaz çalarken döngü geri çekilir, bitince yavaşça geri gelir
@@ -156,7 +159,8 @@ func engine(active: bool, rpm: float, throttle: float, delta: float) -> void:
 		_duck = maxf(_duck - delta * 3.0, 0.0)
 	var e: float = _rev
 	# ENGINE_LEVEL: motor döngüsü %10 kısık (ara gaz sesi aynı kalır)
-	var master_db: float = lerpf(-14.0, -3.0, clampf(0.5 * e + 0.5 * throttle, 0.0, 1.0)) - 12.0 * _duck + ENGINE_LEVEL_DB
+	_thr = lerpf(_thr, throttle, clampf(delta * 2.0, 0.0, 1.0))
+	var master_db: float = lerpf(-14.0, -3.0, clampf(0.7 * e + 0.3 * _thr, 0.0, 1.0)) - 12.0 * _duck + ENGINE_LEVEL_DB
 	var w_low: float = clampf(1.0 - e * 1.4, 0.0, 1.0)
 	var w_high: float = clampf((e - 0.15) * 1.6, 0.0, 1.0)
 	var weights: Array = [w_low, w_high]

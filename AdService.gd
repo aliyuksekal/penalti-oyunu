@@ -1,18 +1,25 @@
 extends Node
 ## Reklam ve uygulama içi satın alma katmanı.
 ##
-## ŞU AN TEST MODUNDA: gerçek reklam yerine tam ekran bir "TEST REKLAMI" gösterir,
-## jeton paketleri gerçek ödeme almadan verilir. Oyunun tüm akışı (ne zaman reklam
-## çıkar, ödül ne zaman verilir) gerçeğiyle aynıdır.
-## Yayından önce: AdMob eklentisi (tam ekran = interstitial, ödüllü = rewarded) ve
-## Google Play Billing eklentisi bu dosyadaki _real_* noktalarına bağlanır.
-## Alt banner reklamı bilerek YOK.
+## Android'de AdMob eklentisi varsa GERÇEK AdMob reklamları (AdMobBridge.gd) gösterilir.
+## Masaüstünde ve otomatik testlerde aynı akış tam ekran bir "TEST REKLAMI" ile çalışır.
+## Jeton paketleri henüz test modunda (Google Play Billing bağlanınca gerçek ödeme).
+## Alt banner reklamı bilerek YOK. Tam ekran reklam en fazla 3 dakikada bir çıkar.
+
+## AdMob yayıncı: pub-9672960376821171
+## Uygulama kimliği project.godot -> [admob] general/android/app_id içinde.
+## Gerçek reklam birimi kimlikleri gelince aşağıdakiler değiştirilecek
+## (şimdilik Google'ın resmi TEST birimleri: gerçek SDK, para kazandırmaz, hesabı riske atmaz).
+const AD_UNITS := {
+	"interstitial": "ca-app-pub-3940256099942544/1033173712",
+	"rewarded": "ca-app-pub-3940256099942544/5224354917",
+}
 
 signal tokens_purchased(amount: int)
 
-@export var test_mode: bool = true
-## İki tam ekran reklam arasındaki en kısa süre (sn). 0 = her işlemde reklam.
-@export var interstitial_min_gap: float = 0.0
+@export var test_mode: bool = true      # jeton satın alma (Billing gelene kadar)
+## İki tam ekran reklam arasındaki en kısa süre (sn): reklamı abartmayalım
+@export var interstitial_min_gap: float = 180.0
 @export var test_interstitial_seconds: float = 3.0
 @export var test_rewarded_seconds: float = 5.0
 
@@ -26,6 +33,7 @@ const PACKS: Array = [
 var autoclose: bool = false   # sadece otomatik testler için
 var _last_interstitial_ms: int = -1000000
 var _layer: CanvasLayer
+var _bridge: Node = null   # gerçek AdMob (sadece Android)
 
 
 func _ready() -> void:
@@ -33,6 +41,17 @@ func _ready() -> void:
 	_layer = CanvasLayer.new()
 	_layer.layer = 100
 	add_child(_layer)
+	# oyunun ilk 3 dakikasında tam ekran reklam yok
+	_last_interstitial_ms = Time.get_ticks_msec()
+	if OS.get_name() == "Android" and Engine.has_singleton("PoingGodotAdMob"):
+		_bridge = load("res://AdMobBridge.gd").new()
+		_bridge.process_mode = Node.PROCESS_MODE_ALWAYS
+		add_child(_bridge)
+		_bridge.start(String(AD_UNITS["interstitial"]), String(AD_UNITS["rewarded"]))
+
+
+func is_live() -> bool:
+	return _bridge != null
 
 
 func is_showing() -> bool:
@@ -46,7 +65,7 @@ func show_interstitial(done: Callable) -> void:
 		done.call()
 		return
 	_last_interstitial_ms = Time.get_ticks_msec()
-	if not test_mode:
+	if _bridge != null:
 		_real_interstitial(done)
 		return
 	_overlay("REKLAM", "Tam ekran reklam (TEST)", test_interstitial_seconds, "KAPAT  ✕", func(_watched: bool) -> void: done.call(), false)
@@ -54,7 +73,7 @@ func show_interstitial(done: Callable) -> void:
 
 ## Ödüllü reklam; sonuna kadar izlenirse on_reward çağrılır
 func show_rewarded(on_reward: Callable, on_cancel: Callable = Callable()) -> void:
-	if not test_mode:
+	if _bridge != null:
 		_real_rewarded(on_reward, on_cancel)
 		return
 	var finish := func(watched: bool) -> void:
@@ -79,12 +98,37 @@ func buy_pack(pack: Dictionary, on_success: Callable) -> void:
 
 # ---------------- gerçek SDK bağlantı noktaları ----------------
 func _real_interstitial(done: Callable) -> void:
-	# AdMob eklentisi eklenince: yüklenmiş interstitial'ı göster, kapanınca done.call()
-	done.call()
+	_bridge.show_interstitial(done)
 
 
+## Ödüllü reklam hazır değilse en fazla 8 sn "Reklam yükleniyor" bekle; gelmezse haber ver
 func _real_rewarded(on_reward: Callable, on_cancel: Callable) -> void:
-	# AdMob eklentisi eklenince: rewarded göster, "user_earned_reward" gelince on_reward.call()
+	if _bridge.show_rewarded(on_reward, on_cancel):
+		return
+	_bridge.ensure_rewarded()
+	var root := ColorRect.new()
+	root.color = Color(0.02, 0.02, 0.04, 0.9)
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_layer.add_child(root)
+	var lbl := Label.new()
+	lbl.text = "Reklam yükleniyor..."
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 36)
+	root.add_child(lbl)
+	var waited: float = 0.0
+	while waited < 8.0 and not _bridge.has_rewarded():
+		await get_tree().create_timer(0.25, true).timeout
+		waited += 0.25
+	if _bridge.has_rewarded():
+		root.queue_free()
+		_bridge.show_rewarded(on_reward, on_cancel)
+		return
+	lbl.text = "Şu an reklam yok.\nİnternet bağlantını kontrol edip tekrar dene."
+	await get_tree().create_timer(2.2, true).timeout
+	root.queue_free()
 	if on_cancel.is_valid():
 		on_cancel.call()
 
