@@ -289,8 +289,10 @@ func _alltrucks() -> void:
 func _shots() -> void:
 	# açılış animasyonu kareleri
 	main._play_intro()
-	for tt in [0.5, 1.25, 1.7, 1.95]:
-		await _wait(tt - (0.0 if tt == 0.5 else 0.0))
+	var prev_t: float = 0.0
+	for tt in [0.5, 1.3, 1.75, 2.05]:
+		await _wait(tt - prev_t)
+		prev_t = tt
 		await _shot("intro_%d.png" % int(tt * 100))
 	await _wait(1.0)
 	for d in main.TruckCatalog.all():
