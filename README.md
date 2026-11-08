@@ -1,4 +1,4 @@
-# Ağır Yük – Kargo Taşıma (Godot 4)
+# Drop Zero: Heavy Hauler (Godot 4)
 
 2D fizik tabanlı kamyon/kargo taşıma oyunu. Kasadaki yükleri düşürmeden teslimat noktalarına ulaştır.
 Hiç görsel dosya yok: araziden kamyonlara her şey kodla (Polygon2D / Line2D) çiziliyor.

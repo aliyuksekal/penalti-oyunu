@@ -94,6 +94,8 @@ func _press(key: int, down: bool) -> void:
 func _controls() -> void:
 	main.start_game()
 	_check(main.time_left > 100.0, "teslimat süresi başladı: %.0f sn" % main.time_left)
+	_check(main.truck._drive_share(0) == 1.0 and main.truck._drive_share(1) == 0.0, "Tosun arkadan itişli")
+	_check(main.TruckCatalog.by_id("titan").get("drive", "rwd") == "awd", "Titan 4x4")
 	# gaz -> hızlan
 	_key(true)
 	await _wait(3.0)
@@ -124,7 +126,12 @@ func _controls() -> void:
 	_key(true)
 	await _wait(1.5)
 	var sp0: float = main.truck.body.linear_velocity.length()
+	var vx0: float = main.truck.body.linear_velocity.dot(main.truck.body.global_transform.x)
 	main._try_turbo()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var vx1: float = main.truck.body.linear_velocity.dot(main.truck.body.global_transform.x)
+	_check(vx1 > vx0 + 150.0, "turbo anlık itiş verdi (%.0f -> %.0f px/sn)" % [vx0, vx1])
 	_check(main.truck.turbo_active, "turbo açıldı")
 	await _wait(1.5)
 	var sp1: float = main.truck.body.linear_velocity.length()

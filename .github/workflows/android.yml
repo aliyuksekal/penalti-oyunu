@@ -1,4 +1,4 @@
-name: Ağır Yük derleme (AAB + APK)
+name: Drop Zero: Heavy Hauler derleme (AAB + APK)
 
 on:
   push:
@@ -210,12 +210,12 @@ jobs:
         run: |
           set -e
           mkdir -p build
-          godot --headless --path . --export-release "Android AAB" build/agir-yuk.aab 2>&1 | tee export_aab.log | tail -40
-          test -s build/agir-yuk.aab
+          godot --headless --path . --export-release "Android AAB" build/drop-zero.aab 2>&1 | tee export_aab.log | tail -40
+          test -s build/drop-zero.aab
           MAP=$(find android/build/build/outputs -name mapping.txt | head -1 || true)
           [ -n "$MAP" ] && cp "$MAP" build/mapping.txt || echo "::warning::mapping.txt bulunamadı"
-          godot --headless --path . --export-release "Android APK" build/agir-yuk.apk 2>&1 | tee export_apk.log | tail -40
-          test -s build/agir-yuk.apk
+          godot --headless --path . --export-release "Android APK" build/drop-zero.apk 2>&1 | tee export_apk.log | tail -40
+          test -s build/drop-zero.apk
           # Play Console'a yalnızca gönderdiğimiz ABI'lerin sembolleri (arm64-v8a, armeabi-v7a, x86_64)
           rm -rf /tmp/sym && mkdir -p /tmp/sym && unzip -q ~/godot-dl/Godot_native_debug_symbols.${GODOT_VERSION}.stable.template_release.android.zip -d /tmp/sym
           find /tmp/sym -maxdepth 3 -type d | head -20
@@ -228,12 +228,12 @@ jobs:
         run: |
           set -e
           BT="$ANDROID_HOME/build-tools/${BUILD_TOOLS}"
-          "$BT/aapt2" dump badging build/agir-yuk.apk | grep -E "package:|sdkVersion|targetSdkVersion|application-label:|uses-permission|native-code" | tee verify.txt
+          "$BT/aapt2" dump badging build/drop-zero.apk | grep -E "package:|sdkVersion|targetSdkVersion|application-label:|uses-permission|native-code" | tee verify.txt
           grep -q "targetSdkVersion:'36'" verify.txt
-          "$BT/apksigner" verify --print-certs build/agir-yuk.apk | head -5 | tee -a verify.txt
-          "$BT/zipalign" -c -P 16 4 build/agir-yuk.apk && echo "16 KB hizalama: OK" | tee -a verify.txt
-          echo "APK boyutu: $(( $(stat -c %s build/agir-yuk.apk) / 1048576 )) MB" | tee -a verify.txt
-          jarsigner -verify build/agir-yuk.aab | tail -1 | tee -a verify.txt
+          "$BT/apksigner" verify --print-certs build/drop-zero.apk | head -5 | tee -a verify.txt
+          "$BT/zipalign" -c -P 16 4 build/drop-zero.apk && echo "16 KB hizalama: OK" | tee -a verify.txt
+          echo "APK boyutu: $(( $(stat -c %s build/drop-zero.apk) / 1048576 )) MB" | tee -a verify.txt
+          jarsigner -verify build/drop-zero.aab | tail -1 | tee -a verify.txt
           ls -la build
 
       - name: bundletool
@@ -263,10 +263,10 @@ jobs:
       - name: Sürüm notu
         run: |
           {
-            echo "## Ağır Yük ${VERSION_NAME} (sürüm kodu ${VERSION_CODE})"
+            echo "## Drop Zero: Heavy Hauler ${VERSION_NAME} (sürüm kodu ${VERSION_CODE})"
             echo
-            echo "- **agir-yuk.apk** – telefona doğrudan kurulum"
-            echo "- **agir-yuk.aab** – Google Play Console'a yüklenecek paket"
+            echo "- **drop-zero.apk** – telefona doğrudan kurulum"
+            echo "- **drop-zero.aab** – Google Play Console'a yüklenecek paket"
             echo "- **mapping.txt** – Play Console > App bundle explorer > Downloads > ReTrace mapping file"
             echo "- **native-debug-symbols.zip** – Play Console > App bundle explorer > Downloads > Native debug symbols"
             echo
@@ -299,7 +299,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: agir-yuk-${{ env.VERSION_NAME }}
+          name: drop-zero-${{ env.VERSION_NAME }}
           path: |
             build/*.apk
             build/*.aab
@@ -315,11 +315,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION_NAME }}
-          name: Ağır Yük ${{ env.VERSION_NAME }}
+          name: Drop Zero: Heavy Hauler ${{ env.VERSION_NAME }}
           body_path: build/RELEASE_NOTES.md
           make_latest: true
           files: |
-            build/agir-yuk.apk
-            build/agir-yuk.aab
+            build/drop-zero.apk
+            build/drop-zero.aab
             build/mapping.txt
             build/native-debug-symbols.zip

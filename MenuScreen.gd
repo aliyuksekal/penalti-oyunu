@@ -26,10 +26,18 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	# --- sol üst: başlık ---
-	var title := _lbl(self, "AĞIR YÜK", 66, Color(1.0, 0.62, 0.15))
-	title.position = Vector2(34, 18)
-	var sub := _lbl(self, "Kargo Taşıma", 28, Color.WHITE)
-	sub.position = Vector2(38, 100)
+	var logo := TextureRect.new()
+	logo.texture = load("res://icons/icon.png")
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.position = Vector2(30, 18)
+	logo.size = Vector2(112, 112)
+	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(logo)
+	var title := _lbl(self, "DROP ZERO", 58, Color(1.0, 0.62, 0.15))
+	title.position = Vector2(156, 20)
+	var sub := _lbl(self, "Heavy Hauler", 30, Color.WHITE)
+	sub.position = Vector2(160, 88)
 
 	# --- sol alt: başla ---
 	var start := Button.new()
@@ -163,6 +171,7 @@ func _build_trucks() -> void:
 		var ds := _lbl(info, String(d["desc"]), 15, Color(0.75, 0.8, 0.88))
 		ds.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		ds.custom_minimum_size = Vector2(200, 0)
+		_lbl(info, "Çekiş: 4x4" if String(d.get("drive", "rwd")) == "awd" else "Çekiş: arkadan itiş", 14, Color(1.0, 0.8, 0.4))
 		_stat(info, "Güç", float(d["power"]) / 2.1)
 		_stat(info, "Tutuş", float(d["grip"]) / 1.55)
 		_stat(info, "Süspansiyon", (float(d["stiff"]) + float(d["damp"])) / 2.0 / 1.4)

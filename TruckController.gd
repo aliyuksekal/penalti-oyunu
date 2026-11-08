@@ -40,6 +40,8 @@ const UPGRADE_STEP := {"engine": 0.12, "stiffness": 0.10, "damping": 0.15, "grip
 @export var turbo_power: float = 1.8             # turbo sırasında güç çarpanı
 @export var turbo_speed: float = 1.3             # turbo sırasında azami hız çarpanı
 @export var turbo_duration: float = 2.5          # sn
+@export var turbo_kick: float = 330.0            # anlık itiş: kazandırdığı ani hız (px/sn)
+@export var turbo_push: float = 650.0            # turbo süresince ek itme ivmesi (px/sn²)
 @export var turbo_recharge: float = 12.0         # turbonun yeniden dolma süresi (sn)
 @export_group("")
 @export var brake_ratio: float = 1.6
@@ -317,7 +319,7 @@ func _physics_process(delta: float) -> void:
 	reversing = brake_pressed and can_drive and brake_hold >= reverse_hold_time and fwd_speed < 60.0
 	for i in range(wheels.size()):
 		var w: RigidBody2D = wheels[i]
-		var share: float = 0.6 if i == 0 else 0.4   # arka ağırlıklı çekiş
+		var share: float = _drive_share(i)
 		if gas_pressed and throttle > 0.0:
 			if w.angular_velocity < vmax:
 				w.apply_torque(power * share)
@@ -364,10 +366,20 @@ func _update_engine(delta: float, throttle: float) -> void:
 	_update_smoke(throttle)
 
 
-## Turbo: dolunca kullanılır, birkaç saniye büyük güç; motoru ısıtır
+## Çekiş: wheels[0] arka teker, wheels[1] ön teker.
+## Arkadan itiş = bütün güç arka tekere; 4x4 = güç iki tekere bölünür.
+func _drive_share(i: int) -> float:
+	if String(model.get("drive", "rwd")) == "awd":
+		return 0.55 if i == 0 else 0.45
+	return 1.0 if i == 0 else 0.0
+
+
+## Turbo: anlık itiş (ani hız kazanımı) + birkaç saniye ek güç; motoru ısıtır
 func use_turbo() -> bool:
 	if turbo_active or turbo_charge < 1.0 or not engine_enabled or overheated or fuel <= 0.0:
 		return false
+	# anlık itiş: kamyonu bulunduğu yönde ileri fırlat
+	body.apply_central_impulse(body.global_transform.x * body.mass * turbo_kick)
 	turbo_active = true
 	turbo_charge = 0.0
 	_turbo_t = turbo_duration
@@ -377,6 +389,7 @@ func use_turbo() -> bool:
 func _update_turbo(delta: float) -> void:
 	if turbo_active:
 		_turbo_t -= delta
+		body.apply_central_force(body.global_transform.x * body.mass * turbo_push)
 		heat = minf(heat + heat_rise * 0.9 * delta, 99.0)
 		fuel = maxf(fuel - fuel_use_gas * 0.6 * delta, 0.0)
 		if _turbo_t <= 0.0 or overheated or fuel <= 0.0:

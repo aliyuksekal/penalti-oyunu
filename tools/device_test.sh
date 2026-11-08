@@ -11,16 +11,16 @@ echo "Android: $(adb shell getprop ro.build.version.release) (SDK $(adb shell ge
 FAIL=0
 
 # 1) Play'e gidecek AAB'den evrensel APK üret (AAB'yi de doğrular) ve kur
-java -jar /tmp/bundletool.jar validate --bundle=build/agir-yuk.aab > "$OUT/bundletool_validate.txt" 2>&1 \
+java -jar /tmp/bundletool.jar validate --bundle=build/drop-zero.aab > "$OUT/bundletool_validate.txt" 2>&1 \
   && echo "AAB doğrulama: OK" | tee -a "$OUT/result.txt" || { echo "AAB doğrulama: HATA" | tee -a "$OUT/result.txt"; FAIL=1; }
-java -jar /tmp/bundletool.jar build-apks --bundle=build/agir-yuk.aab --output=/tmp/u.apks --mode=universal \
+java -jar /tmp/bundletool.jar build-apks --bundle=build/drop-zero.aab --output=/tmp/u.apks --mode=universal \
   --ks="$KS" --ks-pass="pass:$PASS" --ks-key-alias="$ALIAS" --key-pass="pass:$PASS" --overwrite > /dev/null 2>&1
 unzip -o -q /tmp/u.apks universal.apk -d /tmp
 echo "AAB evrensel APK kurulumu: $(adb install -r /tmp/universal.apk 2>&1 | tail -1)" | tee -a "$OUT/result.txt"
 adb uninstall "$PKG" > /dev/null 2>&1
 
 # 2) Kullanıcının telefona kuracağı APK'nin kendisi
-R=$(adb install -r build/agir-yuk.apk 2>&1 | tail -1)
+R=$(adb install -r build/drop-zero.apk 2>&1 | tail -1)
 echo "Release APK kurulumu: $R" | tee -a "$OUT/result.txt"
 if [[ "$R" != *Success* ]]; then
   echo "Release APK kurulamadı, AAB'den üretilen APK ile açılış test ediliyor" | tee -a "$OUT/result.txt"
