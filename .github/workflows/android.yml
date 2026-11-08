@@ -72,6 +72,15 @@ jobs:
             printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' "$ANDROID_HOME" "$JAVA_HOME" > ~/.config/godot/$f
           done
 
+      - name: Gradle önbelleği
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/gradle-dist
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: gradle-${{ runner.os }}-v1
+
       - name: Android derleme şablonu + R8
         run: |
           set -e
@@ -81,6 +90,15 @@ jobs:
           touch android/build/.gdignore
           cp android_overrides/proguard-godot.pro android/build/
           python3 tools/patch_gradle.py android/build/build.gradle
+          # Gradle dağıtımını yeniden denemeli indir (GitHub bazen 504 veriyor), yerel dosyadan kullan
+          WP=android/build/gradle/wrapper/gradle-wrapper.properties
+          URL=$(grep distributionUrl "$WP" | cut -d= -f2- | sed 's#\\:#:#g')
+          echo "Gradle: $URL"
+          mkdir -p ~/gradle-dist
+          FN=~/gradle-dist/$(basename "$URL")
+          [ -s "$FN" ] || curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors -o "$FN" "$URL"
+          sed -i "s#^distributionUrl=.*#distributionUrl=file\\://$FN#" "$WP"
+          grep distributionUrl "$WP"
           grep -n "minifyEnabled\|targetSdk\|compileSdk" android/build/build.gradle android/build/config.gradle | head -20
 
       - name: Sürüm numarası
