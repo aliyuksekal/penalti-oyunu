@@ -287,11 +287,9 @@ def diesel_loop(rpm, sr, er, seconds=1.6, load=0.6):
 
 
 def engine():
+    # motor sesi artık gerçek kayıttan: tools/make_ford_audio.py (diesel_loop yedek olarak duruyor)
     sr = 22050
     er = np.random.default_rng(1983)
-    write("motor_rolanti.wav", diesel_loop(650, sr, er, 1.6, 0.35), sr, 0.85)
-    write("motor_orta.wav", diesel_loop(1350, sr, er, 1.4, 0.7), sr, 0.85)
-    write("motor_yuksek.wav", diesel_loop(2200, sr, er, 1.2, 1.0), sr, 0.85)
     # ara gazdan sonra egzoz patlaması (eski kamyonların "pat pat"ı)
     out = np.zeros(int(0.5 * sr))
     for k, tt in enumerate([0.0, 0.11, 0.19, 0.31]):

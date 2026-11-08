@@ -404,7 +404,7 @@ func _play_intro() -> void:
 	# motor sesi (yüksek devir döngüsü, perdesi yükselir)
 	var roar := AudioStreamPlayer.new()
 	roar.bus = "Efekt"
-	roar.stream = load("res://audio/motor_yuksek.wav")
+	roar.stream = load("res://audio/motor_ford_yuksek.wav")
 	roar.volume_db = -60.0
 	roar.pitch_scale = 0.75
 	layer.add_child(roar)
@@ -434,7 +434,11 @@ func _play_intro() -> void:
 	var spin := func() -> void:
 		dust.emitting = true
 		roar.play()
-		snd.sfx("turbo", -4.0, 0.7)
+		var ag := AudioStreamPlayer.new()
+		ag.bus = "Efekt"
+		ag.stream = load("res://audio/aragaz_2.wav")
+		layer.add_child(ag)
+		ag.play()
 	tw.tween_callback(spin)
 	tw.set_parallel(true)
 	tw.tween_property(roar, "volume_db", -4.0, 0.25)
