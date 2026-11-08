@@ -15,6 +15,8 @@ var _content: VBoxContainer
 var _scroll: ScrollContainer
 var _tab_btns: Dictionary = {}
 var _panel: PanelContainer
+var _buttons: HBoxContainer
+var _continue: Button
 var _logo_taps: int = 0
 var _logo_tap_t: float = 0.0
 
@@ -43,62 +45,49 @@ func _ready() -> void:
 	var sub := _lbl(self, "Heavy Hauler", 30, Color.WHITE)
 	sub.position = Vector2(160, 88)
 
-	# --- sol alt: başla ---
-	var start := Button.new()
-	start.text = "BAŞLA  ▶"
-	start.add_theme_font_size_override("font_size", 44)
-	start.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	start.offset_left = 34
-	start.offset_right = 384
-	start.offset_top = -136
-	start.offset_bottom = -30
-	manager._style_btn(start, Color(0.15, 0.68, 0.3))
-	start.pressed.connect(func() -> void: manager.start_game())
-	add_child(start)
-	# mağaza ve geliştirme: paneli açar (menü açılınca panel kapalı, kamyon ortada)
-	var shop_btn := Button.new()
-	shop_btn.text = "MAĞAZA"
-	shop_btn.add_theme_font_size_override("font_size", 24)
-	shop_btn.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	shop_btn.offset_left = 400
-	shop_btn.offset_right = 610
-	shop_btn.offset_top = -136
-	shop_btn.offset_bottom = -86
-	manager._style_btn(shop_btn, Color(0.1, 0.55, 0.7))
-	shop_btn.pressed.connect(func() -> void: open_panel("trucks"))
-	add_child(shop_btn)
-	var up_btn := Button.new()
-	up_btn.text = "GELİŞTİRME"
-	up_btn.add_theme_font_size_override("font_size", 24)
-	up_btn.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	up_btn.offset_left = 400
-	up_btn.offset_right = 610
-	up_btn.offset_top = -80
-	up_btn.offset_bottom = -30
-	manager._style_btn(up_btn, Color(0.8, 0.5, 0.1))
-	up_btn.pressed.connect(func() -> void: open_panel("upgrades"))
-	add_child(up_btn)
 	_best_lbl = _lbl(self, "", 22, Color.WHITE)
-	_best_lbl.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_best_lbl.offset_left = 38
-	_best_lbl.offset_top = -178
-	_best_lbl.offset_bottom = -140
-	var toggles := HBoxContainer.new()
-	toggles.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	toggles.offset_left = 34
-	toggles.offset_right = 420
-	toggles.offset_top = -236
-	toggles.offset_bottom = -184
-	toggles.add_theme_constant_override("separation", 6)
-	add_child(toggles)
-	manager.add_settings_toggles(toggles)
+	_best_lbl.position = Vector2(160, 128)
+
+	# --- ortada koca butonlar: BAŞLA, MAĞAZA, GELİŞTİRME ---
+	_buttons = HBoxContainer.new()
+	_buttons.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_buttons.offset_left = -560
+	_buttons.offset_right = 560
+	_buttons.offset_top = -170
+	_buttons.offset_bottom = -44
+	_buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	_buttons.add_theme_constant_override("separation", 22)
+	add_child(_buttons)
+	_big_btn("BAŞLA  ▶", Color(0.15, 0.68, 0.3), func() -> void: manager.start_new_game())
+	_big_btn("MAĞAZA", Color(0.1, 0.55, 0.75), func() -> void: open_panel("trucks"))
+	_big_btn("GELİŞTİRME", Color(0.85, 0.52, 0.1), func() -> void: open_panel("upgrades"))
+	# kaldığı yerden devam (kayıtlı yolculuk varsa)
+	_continue = Button.new()
+	_continue.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_continue.offset_left = -300
+	_continue.offset_right = 300
+	_continue.offset_top = -250
+	_continue.offset_bottom = -186
+	_continue.add_theme_font_size_override("font_size", 26)
+	manager._style_btn(_continue, Color(0.55, 0.25, 0.75))
+	_continue.pressed.connect(func() -> void: manager.resume_run())
+	add_child(_continue)
+
+	# --- sağ üst: ayarlar çarkı ---
+	var gear = manager.make_gear_button(manager.open_settings)
+	gear.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	gear.offset_left = -96
+	gear.offset_right = -20
+	gear.offset_top = 18
+	gear.offset_bottom = 94
+	add_child(gear)
 
 	# --- sağ panel ---
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
 	panel.offset_left = -680
 	panel.offset_right = -14
-	panel.offset_top = 14
+	panel.offset_top = 104
 	panel.offset_bottom = -14
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = C_PANEL
@@ -159,15 +148,29 @@ func _ready() -> void:
 	_scroll.add_child(_content)
 
 
+func _big_btn(text: String, col: Color, cb: Callable) -> void:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(330, 120)
+	b.add_theme_font_size_override("font_size", 40)
+	manager._style_btn(b, col)
+	b.pressed.connect(cb)
+	_buttons.add_child(b)
+
+
 func open_panel(which: String) -> void:
 	tab = which
 	_panel.visible = true
+	_buttons.visible = false
+	_continue.visible = false
 	manager.truck.menu_panel_open = true
 	refresh()
 
 
 func close_panel() -> void:
 	_panel.visible = false
+	_buttons.visible = true
+	_continue.visible = manager.has_saved_run()
 	manager.truck.menu_panel_open = false
 
 
@@ -247,6 +250,8 @@ func refresh() -> void:
 	_gold_lbl.text = "ALTIN  %d" % manager.total_gold
 	_token_lbl.text = "JETON  %d" % manager.tokens
 	_best_lbl.text = "Rekor: %d m" % int(manager.best_m)
+	_continue.text = manager.saved_run_label()
+	_continue.visible = manager.has_saved_run() and not _panel.visible
 	for id in _tab_btns:
 		var b: Button = _tab_btns[id]
 		manager._style_btn(b, Color(0.95, 0.55, 0.12) if id == tab else Color(0.2, 0.23, 0.3))

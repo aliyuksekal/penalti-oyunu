@@ -10,7 +10,8 @@ var _driving := false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://kargo_kayit.cfg"))
+	for f in ["user://kargo_kayit.cfg", "user://dropzero.dat", "user://dropzero.dat.bak"]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
 	main = load("res://Main.tscn").instantiate()
 	add_child(main)
 	await get_tree().process_frame

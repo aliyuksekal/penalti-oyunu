@@ -34,6 +34,7 @@ var _ground_mat := PhysicsMaterial.new()
 var _rock_noise := FastNoiseLite.new()
 var _features: Dictionary = {}   # kesim no -> {kind, center, half, h}
 var _seed: int = 0
+var _start_wall: StaticBody2D
 
 ## Bölge renkleri (her teslimat noktasında yeni bölge başlar): çim, toprak, derin toprak
 const ZONE_COLORS: Array = [
@@ -126,7 +127,18 @@ const SIGNS := {"bumps": "TÜMSEKLİ YOL", "steep": "DİK YOKUŞ", "ramp": "RAMP
 
 
 func _ready() -> void:
-	var s: int = noise_seed if noise_seed != 0 else randi()
+	reseed(noise_seed if noise_seed != 0 else randi())
+
+
+## Araziyi belirli bir tohumla yeniden kur (kayıtlı yolculuğa devam ederken aynı yollar gelsin)
+func reseed(s: int, focus_x: float = 0.0) -> void:
+	for k in _chunks.keys():
+		(_chunks[k] as Node).queue_free()
+	_chunks.clear()
+	_features.clear()
+	_roads.clear()
+	if _start_wall != null and is_instance_valid(_start_wall):
+		_start_wall.queue_free()
 	_noise.seed = s
 	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_noise.frequency = 0.0011
@@ -143,7 +155,11 @@ func _ready() -> void:
 	_ground_mat.friction = 1.0
 	_ground_mat.bounce = 0.0
 	_build_start_wall()
-	update_around(0.0)
+	update_around(focus_x)
+
+
+func get_seed() -> int:
+	return _seed
 
 
 ## 0 (başlangıç) .. 1 (en zor)
@@ -765,3 +781,4 @@ func _build_start_wall() -> void:
 	vis.color = Color(0.4, 0.38, 0.36)
 	wall.add_child(vis)
 	add_child(wall)
+	_start_wall = wall

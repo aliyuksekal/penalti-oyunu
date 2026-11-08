@@ -19,8 +19,28 @@ def load(path):
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", path, "-ac", "1", "-ar", str(SR), tmp], check=True)
     w = wave.open(tmp)
     x = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(np.float64) / 32768.0
-    b, a = butter(2, 25 / (SR / 2), "high")   # DC / rüzgâr uğultusunu at
-    return lfilter(b, a, x)
+    b, a = butter(2, 35 / (SR / 2), "high")   # DC / rüzgâr uğultusunu at
+    return clean(lfilter(b, a, x))
+
+
+def clean(x):
+    """Kamyon dışı sesleri temizle: mikrofon/rüzgâr cızırtısı (yüksek frekans) ve sabit arka plan
+    gürültüsü (spektral kapı). Motorun gövdesi (<3 kHz) korunur."""
+    from scipy.signal import stft, istft
+    f, t, Z = stft(x, SR, nperseg=1024, noverlap=768)
+    mag = np.abs(Z)
+    gain = np.ones_like(f)
+    gain[f > 3000] = 0.55
+    gain[f > 4500] = 0.12
+    gain[f > 6500] = 0.0
+    mag = mag * gain[:, None]
+    # spektral kapı: her frekansta gürültü tabanının (en sessiz %15) 1.6 katını çıkar, kalanı koru
+    floor = np.percentile(mag, 15, axis=1, keepdims=True)
+    hf = (f > 1500)[:, None]          # sadece motor harmoniklerinin seyrek olduğu üst bantta
+    mag = np.where(hf, np.maximum(mag - 1.6 * floor, mag * 0.08), mag)
+    Z2 = mag * np.exp(1j * np.angle(Z))
+    _, y = istft(Z2, SR, nperseg=1024, noverlap=768)
+    return y[: len(x)]
 
 
 def write(name, x, peak=0.9):

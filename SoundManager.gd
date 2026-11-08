@@ -7,6 +7,7 @@ const SFX_FILES := ["yuk_dustu", "teslimat", "oyun_bitti", "tik", "inis", "harar
 ## Motor: gerçek Ford kamyon kaydından kesilmiş iki döngü (düşük ve yüksek devir), devire göre karışır.
 ## Ara gaz: aynı kayıttaki gerçek ara gaz patlamaları (gaza hızlı hızlı basınca çalar).
 const ENGINE_FILES := ["res://audio/motor_ford_dusuk.wav", "res://audio/motor_ford_yuksek.wav"]
+const ENGINE_LEVEL_DB := -0.92   # 0.9 kat = %10 daha kısık
 const BLIP_FILES := ["res://audio/aragaz_1.wav", "res://audio/aragaz_2.wav", "res://audio/aragaz_3.wav"]
 
 var MUSIC: Dictionary = {}
@@ -154,7 +155,8 @@ func engine(active: bool, rpm: float, throttle: float, delta: float) -> void:
 	else:
 		_duck = maxf(_duck - delta * 3.0, 0.0)
 	var e: float = _rev
-	var master_db: float = lerpf(-14.0, -3.0, clampf(0.5 * e + 0.5 * throttle, 0.0, 1.0)) - 12.0 * _duck
+	# ENGINE_LEVEL: motor döngüsü %10 kısık (ara gaz sesi aynı kalır)
+	var master_db: float = lerpf(-14.0, -3.0, clampf(0.5 * e + 0.5 * throttle, 0.0, 1.0)) - 12.0 * _duck + ENGINE_LEVEL_DB
 	var w_low: float = clampf(1.0 - e * 1.4, 0.0, 1.0)
 	var w_high: float = clampf((e - 0.15) * 1.6, 0.0, 1.0)
 	var weights: Array = [w_low, w_high]

@@ -61,6 +61,9 @@ var ads: Node
 var menu: Control
 var _hud_nodes: Array[Control] = []
 var _ui_root: Control
+var _gas_hint: Label
+var _saved_run: Dictionary = {}   # kaldığı yerden devam: istasyondaki durum
+var settings_panel: Control
 var _doubled: bool = false
 var night: bool = false
 var next_cp: int = 1
@@ -90,6 +93,7 @@ var _brake_hold: float = 0.0
 var _prev_gas: bool = false
 var _last_road: String = ""
 var _gas_release_t: float = -10.0
+var _tap_streak: int = 0
 var _beep_t: float = 0.0
 var _last_sec: int = -1
 var turbo_btn: TurboButton
@@ -142,6 +146,23 @@ class Pedal extends Control:
 		var fs: int = 30
 		var ts: Vector2 = f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 		draw_string(f, Vector2((size.x - ts.x) * 0.5, size.y - 30.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+
+
+## Ayarlar çarkı (kodla çizilir)
+class GearButton extends Button:
+	func _draw() -> void:
+		var c: Vector2 = size * 0.5
+		var r: float = minf(size.x, size.y) * 0.5 - 2.0
+		draw_circle(c, r, Color(0.1, 0.12, 0.17, 0.85))
+		var col := Color(0.93, 0.94, 0.97) if not is_pressed() else Color(1.0, 0.7, 0.3)
+		var teeth: int = 8
+		var pts := PackedVector2Array()
+		for i in range(teeth * 4):
+			var a: float = TAU * float(i) / float(teeth * 4)
+			var rr: float = r * (0.72 if (i % 4) < 2 else 0.55)
+			pts.append(c + Vector2(cos(a), sin(a)) * rr)
+		draw_colored_polygon(pts, col)
+		draw_circle(c, r * 0.24, Color(0.1, 0.12, 0.17))
 
 
 ## Yuvarlak TURBO düğmesi: dolum halkası gösterir
@@ -480,7 +501,14 @@ func set_dev_mode(on: bool) -> void:
 
 ## Android geri tuşu: oyunda duraklat, duraklatmada devam et, menüde çık
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		# arka plana atıldı: oyunu duraklat, kaydet
+		if state == "play" and not game_over and pause_panel == null and rescue_panel == null:
+			pause_game()
+		_save()
+		return
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_save()
 		get_tree().quit()
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if ads != null and ads.is_showing():
@@ -497,8 +525,59 @@ func _notification(what: int) -> void:
 			get_tree().quit()
 
 
+# ======================= KALDIĞI YERDEN DEVAM =======================
+## Her teslimat istasyonunda yolculuk kaydedilir. Oyun kapansa bile menüde "DEVAM ET" çıkar,
+## aynı arazide (aynı tohum) son ulaşılan istasyondan aynı bölüm ve kazançla sürülür.
+func has_saved_run() -> bool:
+	return not _saved_run.is_empty() and int(_saved_run.get("cp", 1)) >= 2
+
+
+func saved_run_label() -> String:
+	if not has_saved_run():
+		return ""
+	var cp: int = int(_saved_run["cp"])
+	return "▶  DEVAM ET  •  Bölge %d (%d m)" % [cp, int((cp - 1) * terrain.checkpoint_interval_m)]
+
+
+func _save_run() -> void:
+	if state != "play" or game_over:
+		return
+	_saved_run = {"cp": next_cp, "gold": gold_run, "seed": terrain.get_seed(), "truck": selected,
+		"fuel_ads": fuel_ads, "flips": flip_rescues, "delivered": delivered}
+	_save()
+
+
+func start_new_game() -> void:
+	_saved_run = {}
+	_save()
+	start_game()
+
+
+func resume_run() -> void:
+	if not has_saved_run():
+		start_new_game()
+		return
+	var r: Dictionary = _saved_run
+	var cp: int = clampi(int(r.get("cp", 1)), 1, 500)
+	var tid: String = String(r.get("truck", selected))
+	if owned.has(tid) or dev_mode:
+		selected = tid
+	next_cp = cp
+	gold_run = clampi(int(r.get("gold", 0)), 0, 100000)
+	delivered = clampi(int(r.get("delivered", 0)), 0, 100000)
+	fuel_ads = clampi(int(r.get("fuel_ads", 0)), 0, FUEL_AD_STEPS.size())
+	flip_rescues = clampi(int(r.get("flips", 0)), 0, MAX_RESCUES)
+	var x: float = terrain.checkpoint_x(cp - 1) + 80.0
+	terrain.reseed(int(r.get("seed", 1)), x)
+	_build_truck(x)
+	if menu:
+		menu.close_panel()
+	start_game()
+	_toast("Kaldığın yerden devam: Bölge %d" % cp, 2.0)
+
+
 ## Seçili kamyonu (ve yükseltmelerini) başlangıç noktasında kur, kasayı yükle
-func _build_truck() -> void:
+func _build_truck(at_x: float = 60.0) -> void:
 	for c in cargo:
 		c.queue_free()
 	cargo.clear()
@@ -506,9 +585,9 @@ func _build_truck() -> void:
 	if truck.built:
 		truck.teardown()
 	truck.apply_model(TruckCatalog.by_id(selected), levels_of(selected))
-	var sx: float = 60.0
+	var sx: float = at_x
 	truck.build(Vector2(sx, terrain.height_at(sx) - 95.0 - (truck.wheel_r - 26.0)))
-	start_x = truck.body.global_position.x
+	start_x = 60.0
 	_spawn_cargo()
 
 
@@ -555,9 +634,11 @@ func _physics_process(delta: float) -> void:
 	var brk: bool = _pedal_down(brake_btn) or Input.is_physical_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_DOWN)
 	truck.gas_pressed = gas
 	truck.brake_pressed = brk and not gas
-	# ara gaz: gazı bırakıp hemen tekrar basınca motor kükrer
+	# ara gaz: gaza peş peşe en az 3 kez hızlı basınca motor kükrer
 	if gas and not _prev_gas:
-		if Time.get_ticks_msec() / 1000.0 - _gas_release_t < 0.45:
+		var now_s: float = Time.get_ticks_msec() / 1000.0
+		_tap_streak = _tap_streak + 1 if now_s - _gas_release_t < 0.45 else 1
+		if _tap_streak >= 3:
 			snd.blip()
 	elif not gas and _prev_gas:
 		_gas_release_t = Time.get_ticks_msec() / 1000.0
@@ -709,31 +790,38 @@ func _check_checkpoint() -> void:
 	var cx: float = terrain.checkpoint_x(next_cp)
 	if truck.body.global_position.x < cx:
 		return
+	# önce durumu ilerlet: sonraki satırlarda bir şey ters gitse bile bu teslimat
+	# bir daha sayılmaz (ödül tek sefer verilir)
+	var leg: int = next_cp
+	next_cp += 1
 	var intact: int = cargo.size()
-	var time_bonus: int = int(maxf(time_left, 0.0) / 2.0)
+	var time_bonus: int = clampi(int(maxf(time_left, 0.0) / 2.0), 0, 200)
 	var cargo_value: int = 0
 	for c in cargo:
-		cargo_value += int(c.get_meta("deger", gold_per_cargo))
-	var reward: int = cargo_value + station_bonus * next_cp + time_bonus
+		if is_instance_valid(c):
+			cargo_value += clampi(int(c.get_meta("deger", gold_per_cargo)), 0, 100)
+	var reward: int = cargo_value + station_bonus * leg + time_bonus
 	if intact == cargo_total:
 		reward += perfect_bonus
+	reward = clampi(reward, 0, 2000)   # bir teslimatta olabilecek en yüksek ödül
 	gold_run += reward
 	delivered += intact
 	truck.refuel()
 	truck.heat = minf(truck.heat, 40.0)
+	time_left = _leg_time(next_cp)
 	# sağlam yükler teslim edildi, kasa boşaltılıp yeniden yükleniyor
 	for c in cargo:
-		c.queue_free()
+		if is_instance_valid(c):
+			c.queue_free()
 	cargo.clear()
 	_out_time.clear()
-	var msg: String = "TESLİMAT %d m!  %d sağlam yük  +%d altın (süre bonusu %d)\nYeni bölge: %s - yollar zorlaşıyor!" % [int(next_cp * terrain.checkpoint_interval_m), intact, reward, time_bonus, zone_name(next_cp + 1)]
+	var msg: String = "TESLİMAT %d m!  %d sağlam yük  +%d altın (süre bonusu %d)\nYeni bölge: %s - yollar zorlaşıyor!" % [int(leg * terrain.checkpoint_interval_m), intact, reward, time_bonus, zone_name(next_cp)]
 	if intact == cargo_total:
 		msg = "KUSURSUZ! " + msg
 	_toast(msg, 3.0)
 	snd.sfx("teslimat")
-	next_cp += 1
-	time_left = _leg_time(next_cp)
 	_spawn_cargo()   # yeni (daha büyük) yük
+	_save_run()      # kaldığı yerden devam için istasyonda kayıt
 
 
 # ======================= OYUN SONU =======================
@@ -877,6 +965,7 @@ func _end(title: String, detail: String) -> void:
 	game_over = true
 	state = "over"
 	end_reason = title
+	_saved_run = {}   # bitti: kaldığı yerden devam kaydı silinir
 	truck.engine_enabled = false
 	var dist_m: float = _distance_m()
 	var dist_bonus: int = int(dist_m / 20.0)
@@ -915,6 +1004,8 @@ func _bank_run() -> void:
 		total_gold += gold_run
 		gold_run = 0
 		best_m = maxf(best_m, _distance_m())
+		if not _saved_run.is_empty():
+			_saved_run["gold"] = 0     # kasaya girdi, devam edince tekrar sayılmasın
 		_save()
 
 
@@ -1116,12 +1207,8 @@ func _build_ui() -> void:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(spacer)
-	pause_btn = Button.new()
-	pause_btn.text = "II  MENÜ"
-	pause_btn.custom_minimum_size = Vector2(130, 50)
-	pause_btn.add_theme_font_size_override("font_size", 22)
-	_style_btn(pause_btn, Color(0.25, 0.28, 0.36))
-	pause_btn.pressed.connect(pause_game)
+	pause_btn = make_gear_button(pause_game)   # sağ üst: ayarlar / duraklat çarkı
+	pause_btn.custom_minimum_size = Vector2(64, 64)
 	row.add_child(pause_btn)
 
 	# --- uyarı ve bildirim yazıları ---
@@ -1165,6 +1252,15 @@ func _build_ui() -> void:
 	gas_btn.offset_top = -240
 	gas_btn.offset_bottom = -28
 	root.add_child(gas_btn)
+	var hint := _label(root, "Ara gaz için\n3 kere bas", 17)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hint.add_theme_color_override("font_color", Color(1.0, 0.92, 0.7))
+	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	hint.offset_left = -440
+	hint.offset_right = -280
+	hint.offset_top = -92
+	hint.offset_bottom = -30
+	_gas_hint = hint
 
 	# --- göstergeler (alt orta): hız ve hararet ---
 	var gauges := HBoxContainer.new()
@@ -1203,7 +1299,7 @@ func _build_ui() -> void:
 	turbo_btn.offset_top = -420
 	turbo_btn.offset_bottom = -260
 	root.add_child(turbo_btn)
-	_hud_nodes = [top, warn_lbl, brake_btn, gas_btn, gauges, turbo_btn, zone_lbl]
+	_hud_nodes = [top, warn_lbl, brake_btn, gas_btn, gauges, turbo_btn, zone_lbl, _gas_hint]
 
 
 ## Telefon çentiği / yuvarlak köşeler: arayüzü güvenli alanın içine al (sadece mobilde).
@@ -1218,21 +1314,24 @@ func _apply_safe_area(root: Control) -> void:
 	root.offset_bottom = 0.0
 	if not OS.has_feature("mobile"):
 		return
+	# ön kamera deliği / çentik: güvenli alanın dışında kalan kenarlar kadar arayüzü içeri al
 	var safe: Rect2i = DisplayServer.get_display_safe_area()
-	var win: Vector2i = DisplayServer.window_get_size()
 	var scr: Vector2i = DisplayServer.screen_get_size()
-	if win.x <= 0 or win.y <= 0 or safe.size.x <= 0 or safe.size.y <= 0:
+	if scr.x <= 0 or scr.y <= 0 or safe.size.x <= 0 or safe.size.y <= 0:
 		return
-	# döndürme sırasında eski/yeni boyutlar karışıksa uygulama
-	if (win.x > win.y) != (scr.x > scr.y) or (safe.size.x > safe.size.y) != (win.x > win.y):
+	# döndürme anında güvenli alan eski yönde kalmış olabilir: yönler uyuşmuyorsa sonra tekrar denenir
+	if (safe.size.x >= safe.size.y) != (scr.x >= scr.y):
 		return
 	var vp: Vector2 = get_viewport().get_visible_rect().size
-	var k: Vector2 = vp / Vector2(win)
-	if win.x > win.y:
-		root.offset_left = clampf(float(safe.position.x) * k.x, 0.0, 90.0)
-		root.offset_right = -clampf(float(win.x - safe.end.x) * k.x, 0.0, 90.0)
-	else:
-		root.offset_top = clampf(float(safe.position.y) * k.y, 0.0, 60.0)
+	var k: Vector2 = vp / Vector2(scr)
+	var left: float = float(safe.position.x) * k.x
+	var top: float = float(safe.position.y) * k.y
+	var right: float = float(scr.x - safe.end.x) * k.x
+	var bottom: float = float(scr.y - safe.end.y) * k.y
+	root.offset_left = clampf(left, 0.0, 140.0)
+	root.offset_top = clampf(top, 0.0, 140.0)
+	root.offset_right = -clampf(right, 0.0, 140.0)
+	root.offset_bottom = -clampf(bottom, 0.0, 60.0)
 
 
 func _on_resized() -> void:
@@ -1403,6 +1502,57 @@ func _show_game_over(title: String, detail: String, dist_m: float, dist_bonus: i
 	_style_btn(again, Color(0.15, 0.68, 0.3))
 	again.pressed.connect(_restart)
 	v.add_child(again)
+
+
+func make_gear_button(cb: Callable) -> Button:
+	var g := GearButton.new()
+	g.flat = true
+	g.focus_mode = Control.FOCUS_NONE
+	g.custom_minimum_size = Vector2(76, 76)
+	g.tooltip_text = "Ayarlar"
+	g.pressed.connect(_click)
+	g.pressed.connect(cb)
+	return g
+
+
+## Menüdeki çark: ses ayarları
+func open_settings() -> void:
+	if settings_panel != null:
+		return
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.62)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ui.add_child(dim)
+	settings_panel = dim
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.add_child(center)
+	var panel := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.09, 0.11, 0.16, 0.97)
+	sb.set_corner_radius_all(22)
+	sb.border_color = Color(0.95, 0.6, 0.15)
+	sb.set_border_width_all(3)
+	sb.content_margin_left = 34
+	sb.content_margin_right = 34
+	sb.content_margin_top = 20
+	sb.content_margin_bottom = 22
+	panel.add_theme_stylebox_override("panel", sb)
+	center.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 14)
+	panel.add_child(v)
+	var t := _label(v, "AYARLAR", 40)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	v.add_child(row)
+	add_settings_toggles(row)
+	var close := func() -> void:
+		if settings_panel != null:
+			settings_panel.queue_free()
+			settings_panel = null
+	_menu_btn(v, "KAPAT", Color(0.3, 0.32, 0.4), close)
 
 
 func _click() -> void:
@@ -1729,35 +1879,71 @@ func _update_sky(delta: float) -> void:
 
 
 # ======================= KAYIT =======================
+## Kayıt: şifreli (AES) ve bütünlük korumalı dosya. Elle değiştirilirse açılmaz, yedekten
+## yüklenir. Anahtar cihaza özgü: kayıt başka telefona kopyalanıp kullanılamaz.
+## Tüm değerler yüklenirken sınırlanır (eksi/aşırı altın, olmayan kamyon vb. kabul edilmez).
+const SAVE_FILE := "user://dropzero.dat"
+const SAVE_SALT := "dz-heavy-hauler-7f3c91"
+
+
+func _save_key() -> String:
+	var dev: String = OS.get_unique_id()
+	if dev == "":
+		dev = "cihaz"
+	return (SAVE_SALT + ":" + dev).sha256_text()
+
+
 func _load() -> void:
 	var cf := ConfigFile.new()
-	if cf.load(SAVE_PATH) != OK:
-		return
-	total_gold = int(cf.get_value("oyun", "altin", 0))
-	tokens = int(cf.get_value("oyun", "jeton", 0))
-	best_m = float(cf.get_value("oyun", "rekor", 0.0))
+	var ok: bool = cf.load_encrypted_pass(SAVE_FILE, _save_key()) == OK
+	if not ok:
+		cf = ConfigFile.new()
+		ok = cf.load_encrypted_pass(SAVE_FILE + ".bak", _save_key()) == OK
+	if not ok:
+		# eski sürümün şifresiz kaydını bir kez içeri al
+		cf = ConfigFile.new()
+		if cf.load(SAVE_PATH) != OK:
+			return
+	total_gold = clampi(int(cf.get_value("oyun", "altin", 0)), 0, 1000000000)
+	tokens = clampi(int(cf.get_value("oyun", "jeton", 0)), 0, 10000000)
+	best_m = clampf(float(cf.get_value("oyun", "rekor", 0.0)), 0.0, 10000000.0)
 	music_on = bool(cf.get_value("ayar", "muzik", true))
 	sfx_on = bool(cf.get_value("ayar", "efekt", true))
-	owned = cf.get_value("oyun", "sahip", ["tosun"])
-	if not owned.has("tosun"):
-		owned.append("tosun")
+	var ids: Array = []
+	for t in TruckCatalog.all():
+		ids.append(t["id"])
+	owned = ["tosun"]
+	var raw = cf.get_value("oyun", "sahip", ["tosun"])
+	if raw is Array:
+		for o in raw:
+			if ids.has(String(o)) and not owned.has(String(o)):
+				owned.append(String(o))
 	dev_mode = bool(cf.get_value("ayar", "gelistirici", false))
 	selected = String(cf.get_value("oyun", "secili", "tosun"))
-	if not owned.has(selected) and not dev_mode:
+	if not ids.has(selected) or (not owned.has(selected) and not dev_mode):
 		selected = "tosun"
+	up_levels = {}
 	for k in (cf.get_section_keys("garaj") if cf.has_section("garaj") else PackedStringArray()):
 		var key: String = k
 		var v: int = clampi(int(cf.get_value("garaj", key, 0)), 0, MAX_LEVEL)
-		if key.contains(":"):
+		if not key.contains(":"):
+			key = "tosun:" + key   # eski sürüm kaydı
+		var parts: PackedStringArray = key.split(":")
+		if parts.size() == 2 and ids.has(parts[0]):
 			up_levels[key] = v
-		else:
-			up_levels["tosun:" + key] = v   # eski sürüm kaydı
+	_saved_run = {}
+	var run = cf.get_value("yolculuk", "durum", {})
+	if run is Dictionary and int((run as Dictionary).get("cp", 0)) >= 2:
+		_saved_run = run
+	if FileAccess.file_exists(SAVE_PATH):
+		_save()
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
 
 
 func _save() -> void:
 	var cf := ConfigFile.new()
-	cf.set_value("oyun", "altin", total_gold)
-	cf.set_value("oyun", "jeton", tokens)
+	cf.set_value("oyun", "altin", clampi(total_gold, 0, 1000000000))
+	cf.set_value("oyun", "jeton", clampi(tokens, 0, 10000000))
 	cf.set_value("oyun", "rekor", best_m)
 	cf.set_value("ayar", "muzik", music_on)
 	cf.set_value("ayar", "efekt", sfx_on)
@@ -1766,4 +1952,15 @@ func _save() -> void:
 	cf.set_value("oyun", "secili", selected)
 	for k in up_levels:
 		cf.set_value("garaj", String(k), int(up_levels[k]))
-	cf.save(SAVE_PATH)
+	cf.set_value("yolculuk", "durum", _saved_run)
+	# önce geçici dosyaya yaz, sonra eskisini yedekle ve yerine koy (yarıda kalan yazım kaydı bozmaz)
+	if cf.save_encrypted_pass(SAVE_FILE + ".tmp", _save_key()) != OK:
+		return
+	var dir := DirAccess.open("user://")
+	if dir == null:
+		return
+	if dir.file_exists("dropzero.dat"):
+		if dir.file_exists("dropzero.dat.bak"):
+			dir.remove("dropzero.dat.bak")
+		dir.rename("dropzero.dat", "dropzero.dat.bak")
+	dir.rename("dropzero.dat.tmp", "dropzero.dat")
