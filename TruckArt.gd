@@ -124,6 +124,7 @@ static func paint_body(parent: Node2D, d: Dictionary, wheel_r: float, wheel_y: f
 
 	# far + far ışığı + ızgara + tampon
 	var beam := _poly(parent, PackedVector2Array([Vector2(fx, -34), Vector2(fx + 90, -54), Vector2(fx + 90, -2), Vector2(fx, -24)]), Color.WHITE)
+	beam.name = "Far"
 	beam.vertex_colors = PackedColorArray([Color(1, 0.96, 0.75, 0.42), Color(1, 0.96, 0.75, 0.0), Color(1, 0.96, 0.75, 0.0), Color(1, 0.96, 0.75, 0.42)])
 	_poly(parent, _round_rect(fx - 7, -35, fx + 1, -24, 2), Color(1.0, 0.97, 0.78))
 	_poly(parent, _round_rect(fx - 6, -21, fx + 1, -17, 1), Color(1.0, 0.65, 0.1))   # sinyal

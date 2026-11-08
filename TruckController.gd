@@ -33,7 +33,15 @@ const UPGRADE_STEP := {"engine": 0.12, "stiffness": 0.10, "damping": 0.15, "grip
 @export var body_mass: float = 3.0
 @export var wheel_mass: float = 0.6
 @export var max_wheel_speed: float = 38.0        # rad/sn (≈ 72 km/s)
-@export var reverse_ratio: float = 0.55
+@export var reverse_ratio: float = 0.8
+@export var brake_decel: float = 55.0            # fren: tekerlek yavaşlaması (rad/sn²)
+@export var reverse_hold_time: float = 0.35      # bu kadar basılı tutunca fren -> geri vites
+@export_group("Turbo")
+@export var turbo_power: float = 1.8             # turbo sırasında güç çarpanı
+@export var turbo_speed: float = 1.3             # turbo sırasında azami hız çarpanı
+@export var turbo_duration: float = 2.5          # sn
+@export var turbo_recharge: float = 12.0         # turbonun yeniden dolma süresi (sn)
+@export_group("")
 @export var brake_ratio: float = 1.6
 @export var air_control: float = 3.2             # havada gövdeyi döndürme (rad/sn²)
 @export var fuel_use_idle: float = 0.35          # litre/sn rölanti
@@ -54,6 +62,12 @@ var wheel_y: float = 30.0
 ## Kontrol (CargoAndGameManager doldurur)
 var gas_pressed: bool = false
 var brake_pressed: bool = false
+var brake_hold: float = 0.0       # fren düğmesine ne kadardır basılı (sn)
+var reversing: bool = false
+var turbo_active: bool = false
+var turbo_charge: float = 1.0     # 0..1, 1 = kullanıma hazır
+var _turbo_t: float = 0.0
+var flame: CPUParticles2D
 var engine_enabled: bool = true
 var menu_view: bool = false       # menüde kamera kamyonu sola alır
 
@@ -180,6 +194,27 @@ func build(spawn: Vector2) -> void:
 	smoke.emitting = false
 	body.add_child(smoke)
 
+	# turbo alevi: egzozdan turuncu-mavi alev
+	flame = CPUParticles2D.new()
+	flame.position = smoke.position
+	flame.amount = 30
+	flame.lifetime = 0.28
+	flame.direction = smoke.direction
+	flame.spread = 10.0
+	flame.gravity = Vector2.ZERO
+	flame.initial_velocity_min = 160.0
+	flame.initial_velocity_max = 240.0
+	flame.texture = smoke.texture
+	flame.scale_amount_min = 0.35
+	flame.scale_amount_max = 0.6
+	var fg := Gradient.new()
+	fg.offsets = PackedFloat32Array([0.0, 0.4, 1.0])
+	fg.colors = PackedColorArray([Color(1.0, 0.95, 0.6, 1.0), Color(1.0, 0.5, 0.1, 0.9), Color(0.4, 0.5, 1.0, 0.0)])
+	flame.color_ramp = fg
+	flame.local_coords = false
+	flame.emitting = false
+	body.add_child(flame)
+
 	# ---------------- tekerlekler + süspansiyon ----------------
 	wheels.clear()
 	var cargo_share: float = 5.0 * 0.4
@@ -232,6 +267,9 @@ func teardown() -> void:
 	body = null
 	camera = null
 	smoke = null
+	flame = null
+	turbo_active = false
+	turbo_charge = 1.0
 	built = false
 
 
@@ -269,23 +307,26 @@ func _physics_process(delta: float) -> void:
 	var throttle: float = 0.0
 	if can_drive and gas_pressed:
 		throttle = 1.0
-	elif can_drive and brake_pressed:
-		throttle = -1.0
+	elif can_drive and brake_pressed and brake_hold >= reverse_hold_time:
+		throttle = -0.8
 
 	var fwd_speed: float = body.linear_velocity.dot(body.global_transform.x)
+	var power: float = engine_power * (turbo_power if turbo_active else 1.0)
+	var vmax: float = max_wheel_speed * (turbo_speed if turbo_active else 1.0)
+	# kısa basış = fren; basılı tutunca (ve kamyon neredeyse durmuşsa) = geri vites
+	reversing = brake_pressed and can_drive and brake_hold >= reverse_hold_time and fwd_speed < 60.0
 	for i in range(wheels.size()):
 		var w: RigidBody2D = wheels[i]
 		var share: float = 0.6 if i == 0 else 0.4   # arka ağırlıklı çekiş
 		if gas_pressed and throttle > 0.0:
-			if w.angular_velocity < max_wheel_speed:
-				w.apply_torque(engine_power * share)
-		elif brake_pressed:
-			if fwd_speed > 40.0:
-				# ileri giderken: fren (motor gerekmez)
-				w.apply_torque(-engine_power * brake_ratio * share)
-			elif throttle < 0.0 and w.angular_velocity > -max_wheel_speed * 0.5:
-				# durunca: geri vites
+			if w.angular_velocity < vmax:
+				w.apply_torque(power * share)
+		elif reversing:
+			if w.angular_velocity > -max_wheel_speed * 0.55:
 				w.apply_torque(-engine_power * reverse_ratio * share)
+		elif brake_pressed:
+			# fren motor gerektirmez: tekerlekleri yavaşlat
+			w.angular_velocity = move_toward(w.angular_velocity, 0.0, brake_decel * delta)
 
 	# havadayken gövde eğimini kontrol (gaz = arkaya, fren = öne yatır)
 	if not grounded and engine_enabled:
@@ -319,7 +360,31 @@ func _update_engine(delta: float, throttle: float) -> void:
 			_overheat_t = overheat_cooldown
 	else:
 		heat = maxf(heat - heat_fall * delta, 0.0)
+	_update_turbo(delta)
 	_update_smoke(throttle)
+
+
+## Turbo: dolunca kullanılır, birkaç saniye büyük güç; motoru ısıtır
+func use_turbo() -> bool:
+	if turbo_active or turbo_charge < 1.0 or not engine_enabled or overheated or fuel <= 0.0:
+		return false
+	turbo_active = true
+	turbo_charge = 0.0
+	_turbo_t = turbo_duration
+	return true
+
+
+func _update_turbo(delta: float) -> void:
+	if turbo_active:
+		_turbo_t -= delta
+		heat = minf(heat + heat_rise * 0.9 * delta, 99.0)
+		fuel = maxf(fuel - fuel_use_gas * 0.6 * delta, 0.0)
+		if _turbo_t <= 0.0 or overheated or fuel <= 0.0:
+			turbo_active = false
+	elif not menu_view:
+		turbo_charge = minf(turbo_charge + delta / turbo_recharge, 1.0)
+	if flame:
+		flame.emitting = turbo_active
 
 
 ## Egzoz dumanı: rölantide ince ve açık; yokuşta gaza basınca koyu ve yoğun

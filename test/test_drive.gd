@@ -26,6 +26,9 @@ func _ready() -> void:
 	elif cs == "systems":
 		await _systems()
 		get_tree().quit()
+	elif cs == "controls":
+		await _controls()
+		get_tree().quit()
 	elif cs == "touch":
 		# dokunmatik GAZ pedalı: pedalın ortasına parmak bas, 6 sn tut
 		main.start_game()
@@ -79,6 +82,72 @@ func _shot(name: String) -> void:
 		return
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png("res://" + name)
+
+func _press(key: int, down: bool) -> void:
+	var e := InputEventKey.new()
+	e.physical_keycode = key
+	e.keycode = key
+	e.pressed = down
+	Input.parse_input_event(e)
+
+
+func _controls() -> void:
+	main.start_game()
+	_check(main.time_left > 100.0, "teslimat süresi başladı: %.0f sn" % main.time_left)
+	# gaz -> hızlan
+	_key(true)
+	await _wait(3.0)
+	_key(false)
+	var v0: float = main.truck.body.linear_velocity.x
+	# kısa fren: yavaşla, geri gitme
+	_press(KEY_LEFT, true)
+	await _wait(0.3)
+	_press(KEY_LEFT, false)
+	var v1: float = main.truck.body.linear_velocity.x
+	_check(v1 < v0 and not main.truck.reversing, "kısa basış fren yaptı (%.0f -> %.0f px/sn)" % [v0, v1])
+	# uzun basış: önce durur, sonra geri gider
+	var x0: float = main.truck.body.global_position.x
+	_press(KEY_LEFT, true)
+	await _wait(4.0)
+	var rev: bool = main.truck.reversing
+	var x1: float = main.truck.body.global_position.x
+	_press(KEY_LEFT, false)
+	_check(rev, "uzun basış geri vitese geçti")
+	_check(x1 < x0 - 30.0, "geri vitesle geri gitti (%.0f px)" % (x1 - x0))
+	await _wait(0.5)
+	# turbo
+	main.truck.turbo_charge = 1.0
+	_key(true)
+	await _wait(1.5)
+	var sp0: float = main.truck.body.linear_velocity.length()
+	main._try_turbo()
+	_check(main.truck.turbo_active, "turbo açıldı")
+	await _wait(1.5)
+	var sp1: float = main.truck.body.linear_velocity.length()
+	_check(main.truck.flame.emitting, "turbo alevi çıkıyor")
+	print("  turbo hız: %.0f -> %.0f px/sn" % [sp0, sp1])
+	await _wait(1.5)
+	_check(not main.truck.turbo_active and main.truck.turbo_charge < 0.5, "turbo bitti, yeniden doluyor")
+	_key(false)
+	# gece/gündüz
+	var t0: float = main.day_t
+	await _wait(1.0)
+	_check(main.day_t > t0, "gün ilerliyor (%.4f -> %.4f)" % [t0, main.day_t])
+	main.day_t = 0.75
+	main._sky_acc = 1.0
+	await _wait(0.3)
+	_check(main.night_amount() > 0.9 and main._moon.visible and not main._sun.visible, "gece: ay var, güneş yok")
+	main.day_t = 0.25
+	main._sky_acc = 1.0
+	await _wait(0.3)
+	_check(main.night_amount() < 0.05 and main._sun.visible and not main._moon.visible, "gündüz: güneş var")
+	_check(main.zone_name(1) == "Çayır Yolu" and main.zone_name(3) == "Orman Yolu", "bölge adları")
+	# süre dolunca oyun biter
+	main.time_left = 0.5
+	await _wait(1.0)
+	_check(main.game_over and main.end_reason == "TESLİMAT GECİKTİ", "süre dolunca: %s" % main.end_reason)
+	print("SONUÇ: kontroller bitti")
+
 
 func _systems() -> void:
 	# arazi: süreklilik ve kesim türleri
@@ -239,21 +308,33 @@ func _shots() -> void:
 	_key(true)
 	await _wait(6.0)
 	await _shot("g_gauges.png")
+	main.day_t = 0.485
+	main._sky_acc = 1.0
+	await _wait(0.4)
+	await _shot("g_sunset.png")
+	main.day_t = 0.8
+	main._sky_acc = 1.0
+	main.truck.turbo_charge = 1.0
+	main._try_turbo()
+	await _wait(0.6)
+	await _shot("g_night_turbo.png")
+	main.day_t = 0.2
+	main._sky_acc = 1.0
 	_key(false)
 	main.pause_game()
 	await _wait(0.4)
 	await _shot("g_pause.png")
 	main.resume_game()
 	main.open_menu()
-	main.night = false
-	main._set_night(true)
+	main.day_t = 0.75   # gece: ay ve yıldızlar
+	main._sky_acc = 1.0
 	main.select_truck("dagkecisi" if main.owned.has("dagkecisi") else "titan")
 	main.open_menu()
 	await _wait(0.6)
 	await _shot("m_night.png")
 
 func _physics_process(delta: float) -> void:
-	if _done or not _driving or _case() in ["economy", "alltrucks", "shots", "touch", "systems"]:
+	if _done or not _driving or _case() in ["economy", "alltrucks", "shots", "touch", "systems", "controls"]:
 		return
 	t += delta
 	var tr = main.truck

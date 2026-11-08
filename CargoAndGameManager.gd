@@ -34,6 +34,10 @@ static var restarts: int = 0
 @export var station_bonus: int = 15
 @export var perfect_bonus: int = 25
 @export var flip_time_limit: float = 3.0
+@export var leg_time: float = 105.0          # bir teslimat için süre (sn)
+@export var leg_time_bonus: float = 8.0      # her yeni bölgede eklenen süre (zor yollar)
+
+const ZONES: Array = ["Çayır Yolu", "Tepeler", "Orman Yolu", "Dağ Geçidi", "Kayalık Vadi", "Zirve Yolu", "Kartal Yuvası", "Bulutların Üstü"]
 
 @onready var terrain = $Terrain   # TerrainGenerator.gd
 @onready var truck = $Truck       # TruckController.gd
@@ -77,6 +81,13 @@ var sfx_on: bool = true
 var _air_t: float = 0.0
 var _prev_overheat: bool = false
 var _crash_cd: Dictionary = {}   # yük -> son çarpma sesi zamanı
+var time_left: float = 0.0
+var _brake_hold: float = 0.0
+var _beep_t: float = 0.0
+var _last_sec: int = -1
+var turbo_btn: TurboButton
+var timer_lbl: Label
+var zone_lbl: Label
 var cargo_lbl: Label
 var dist_lbl: Label
 var gold_lbl: Label
@@ -124,6 +135,33 @@ class Pedal extends Control:
 		var fs: int = 30
 		var ts: Vector2 = f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 		draw_string(f, Vector2((size.x - ts.x) * 0.5, size.y - 30.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+
+
+## Yuvarlak TURBO düğmesi: dolum halkası gösterir
+class TurboButton extends Control:
+	var charge: float = 1.0
+	var active: bool = false
+
+	func set_state(c: float, a: bool) -> void:
+		if absf(c - charge) > 0.01 or a != active:
+			charge = c
+			active = a
+			queue_redraw()
+
+	func _draw() -> void:
+		var c: Vector2 = size * 0.5
+		var r: float = minf(size.x, size.y) * 0.5 - 6.0
+		var ready_: bool = charge >= 1.0
+		var bg: Color = Color(1.0, 0.45, 0.05, 0.92) if active else (Color(0.95, 0.55, 0.1, 0.8) if ready_ else Color(0.25, 0.27, 0.33, 0.7))
+		draw_circle(c, r, bg)
+		draw_arc(c, r + 2.0, -PI * 0.5, -PI * 0.5 + TAU * charge, 48, Color(1.0, 0.85, 0.2), 6.0)
+		var f: Font = ThemeDB.fallback_font
+		var t: String = "TURBO"
+		var ts: Vector2 = f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
+		draw_string(f, c + Vector2(-ts.x * 0.5, 8), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE if (ready_ or active) else Color(0.7, 0.72, 0.78))
+		# alev simgesi
+		var fl := PackedVector2Array([c + Vector2(0, -r * 0.7), c + Vector2(r * 0.22, -r * 0.25), c + Vector2(0, -r * 0.33), c + Vector2(-r * 0.22, -r * 0.25)])
+		draw_colored_polygon(fl, Color(1, 1, 1, 0.9 if ready_ or active else 0.4))
 
 
 ## Yuvarlak gösterge (hız / hararet), kodla çizilir
@@ -198,7 +236,7 @@ func _ready() -> void:
 	_build_background()
 	_build_ui()
 	_build_truck()
-	_set_night(night)
+	_update_sky(0.2)
 	if skip_menu:
 		skip_menu = false
 		start_game()
@@ -256,6 +294,7 @@ func open_menu() -> void:
 
 func start_game() -> void:
 	state = "play"
+	time_left = _leg_time(next_cp)
 	truck.menu_view = false
 	truck.refuel()
 	if menu:
@@ -280,8 +319,29 @@ func _physics_process(delta: float) -> void:
 	var brk: bool = _pedal_down(brake_btn) or Input.is_physical_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_DOWN)
 	truck.gas_pressed = gas
 	truck.brake_pressed = brk and not gas
+	_brake_hold = _brake_hold + delta if truck.brake_pressed else 0.0
+	truck.brake_hold = _brake_hold
 	gas_btn.set_down(gas)
 	brake_btn.set_down(brk)
+	brake_btn.text = "◀ GERİ VİTES" if truck.reversing else "FREN / GERİ"
+	if truck.reversing:
+		_beep_t -= delta
+		if _beep_t <= 0.0:
+			_beep_t = 0.55
+			snd.sfx("bip", -10.0)
+	else:
+		_beep_t = 0.0
+
+	# teslimat süresi
+	time_left -= delta
+	var sec: int = int(ceil(time_left))
+	if sec != _last_sec:
+		_last_sec = sec
+		if sec <= 10 and sec > 0:
+			snd.sfx("tik", -2.0, 1.5)
+	if time_left <= 0.0:
+		_end("TESLİMAT GECİKTİ", "Yük zamanında teslim edilemedi.")
+		return
 
 	_check_cargo(delta)
 	_check_checkpoint()
@@ -308,6 +368,8 @@ func _update_sounds(delta: float) -> void:
 		_air_t += delta
 
 func _process(delta: float) -> void:
+	if not get_tree().paused:
+		_update_sky(delta)
 	if _toast_t > 0.0:
 		_toast_t -= delta
 		toast_lbl.modulate.a = clampf(_toast_t * 2.0, 0.0, 1.0)
@@ -411,12 +473,21 @@ func _check_cargo(delta: float) -> void:
 
 
 # ======================= TESLİMAT =======================
+func _leg_time(k: int) -> float:
+	return leg_time + leg_time_bonus * float(mini(k - 1, 5))
+
+
+func zone_name(k: int) -> String:
+	return ZONES[mini(k - 1, ZONES.size() - 1)]
+
+
 func _check_checkpoint() -> void:
 	var cx: float = terrain.checkpoint_x(next_cp)
 	if truck.body.global_position.x < cx:
 		return
 	var intact: int = cargo.size()
-	var reward: int = intact * gold_per_cargo + station_bonus * next_cp
+	var time_bonus: int = int(maxf(time_left, 0.0) / 2.0)
+	var reward: int = intact * gold_per_cargo + station_bonus * next_cp + time_bonus
 	if intact == CARGO_COUNT:
 		reward += perfect_bonus
 	gold_run += reward
@@ -429,12 +500,13 @@ func _check_checkpoint() -> void:
 	cargo.clear()
 	_out_time.clear()
 	_spawn_cargo()
-	var msg: String = "TESLİMAT %d m!  %d sağlam yük  +%d altın\nDepo dolduruldu • Yeni yük alındı" % [int(next_cp * terrain.checkpoint_interval_m), intact, reward]
+	var msg: String = "TESLİMAT %d m!  %d sağlam yük  +%d altın (süre bonusu %d)\nYeni bölge: %s - yollar zorlaşıyor!" % [int(next_cp * terrain.checkpoint_interval_m), intact, reward, time_bonus, zone_name(next_cp + 1)]
 	if intact == CARGO_COUNT:
 		msg = "KUSURSUZ! " + msg
 	_toast(msg, 3.0)
 	snd.sfx("teslimat")
 	next_cp += 1
+	time_left = _leg_time(next_cp)
 
 
 # ======================= OYUN SONU =======================
@@ -583,7 +655,7 @@ func _menu_btn(parent: Control, text: String, col: Color, cb: Callable) -> Butto
 
 ## Müzik / Efekt / Gece düğmeleri (duraklatma menüsü ve ana menü ortak)
 func add_settings_toggles(parent: Control) -> void:
-	var items: Array = [["Müzik", "music"], ["Ses", "sfx"], ["Gece", "night"]]
+	var items: Array = [["Müzik", "music"], ["Ses", "sfx"]]
 	for it in items:
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(122, 54)
@@ -592,7 +664,7 @@ func add_settings_toggles(parent: Control) -> void:
 		var key: String = it[1]
 		var label: String = it[0]
 		var paint := func() -> void:
-			var on: bool = music_on if key == "music" else (sfx_on if key == "sfx" else night)
+			var on: bool = music_on if key == "music" else sfx_on
 			b.text = "%s: %s" % [label, "AÇIK" if on else "KAPALI"]
 			_style_btn(b, Color(0.15, 0.55, 0.35) if on else Color(0.3, 0.32, 0.38))
 		var flip := func() -> void:
@@ -601,8 +673,6 @@ func add_settings_toggles(parent: Control) -> void:
 					music_on = not music_on
 				"sfx":
 					sfx_on = not sfx_on
-				"night":
-					_set_night(not night)
 			snd.music_on = music_on
 			snd.sfx_on = sfx_on
 			snd.apply()
@@ -623,6 +693,8 @@ func _input(event: InputEvent) -> void:
 		var st: InputEventScreenTouch = event
 		if st.pressed:
 			_touches[st.index] = st.position
+			if state == "play" and turbo_btn != null and turbo_btn.is_visible_in_tree() and turbo_btn.get_global_rect().has_point(st.position):
+				_try_turbo()
 		else:
 			_touches.erase(st.index)
 	elif event is InputEventScreenDrag:
@@ -633,9 +705,21 @@ func _input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			_mouse_down = mb.pressed
 			_mouse_pos = mb.position
+			if mb.pressed and not mb.is_echo() and _touches.is_empty() and state == "play" and turbo_btn != null and turbo_btn.is_visible_in_tree() and turbo_btn.get_global_rect().has_point(mb.position):
+				_try_turbo()
+	elif event is InputEventKey:
+		var k: InputEventKey = event
+		if k.pressed and not k.echo and (k.physical_keycode == KEY_SPACE or k.physical_keycode == KEY_SHIFT) and state == "play":
+			_try_turbo()
 	elif event is InputEventMouseMotion:
 		var mm: InputEventMouseMotion = event
 		_mouse_pos = mm.position
+
+
+func _try_turbo() -> void:
+	if truck.use_turbo():
+		snd.sfx("turbo", -2.0)
+		_toast("TURBO!", 0.8)
 
 
 func _pedal_down(p: Control) -> bool:
@@ -688,6 +772,12 @@ func _build_ui() -> void:
 	dist_lbl = _label(row, "0 m", 26)
 	gold_lbl = _label(row, "ALTIN 0", 26)
 	next_lbl = _label(row, "", 22)
+	timer_lbl = _label(row, "", 26)
+	zone_lbl = _label(root, "", 20)
+	zone_lbl.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	zone_lbl.offset_left = 26
+	zone_lbl.offset_top = 82
+	zone_lbl.add_theme_color_override("font_color", Color(0.85, 0.95, 0.7))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -771,7 +861,15 @@ func _build_ui() -> void:
 	heat_gauge.size_flags_vertical = Control.SIZE_SHRINK_END
 	heat_gauge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	gauges.add_child(heat_gauge)
-	_hud_nodes = [top, warn_lbl, brake_btn, gas_btn, gauges]
+	turbo_btn = TurboButton.new()
+	turbo_btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	turbo_btn.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	turbo_btn.offset_left = -236
+	turbo_btn.offset_right = -76
+	turbo_btn.offset_top = -420
+	turbo_btn.offset_bottom = -260
+	root.add_child(turbo_btn)
+	_hud_nodes = [top, warn_lbl, brake_btn, gas_btn, gauges, turbo_btn, zone_lbl]
 
 
 ## Telefon çentiği / yuvarlak köşeler: arayüzü güvenli alanın içine al (sadece mobilde)
@@ -836,6 +934,11 @@ func _update_hud(delta: float) -> void:
 	gold_lbl.text = "ALTIN %d" % gold_run
 	var to_next: float = (terrain.checkpoint_x(next_cp) - truck.body.global_position.x) / PX_PER_M
 	next_lbl.text = "TESLİMAT: %d m" % maxi(int(to_next), 0)
+	var tl: int = maxi(int(ceil(time_left)), 0)
+	timer_lbl.text = "SÜRE %d:%02d" % [tl / 60, tl % 60]
+	timer_lbl.add_theme_color_override("font_color", Color(1, 0.35, 0.3) if time_left < 15.0 else Color.WHITE)
+	zone_lbl.text = "Bölge %d: %s" % [next_cp, zone_name(next_cp)]
+	turbo_btn.set_state(truck.turbo_charge, truck.turbo_active)
 
 	var warn: String = ""
 	if truck.overheated:
@@ -848,6 +951,8 @@ func _update_hud(delta: float) -> void:
 		warn = "YAKIT BİTTİ!"
 	elif fuel_bar.value < 20.0:
 		warn = "Yakıt azaldı!"
+	elif time_left < 15.0:
+		warn = "ACELE ET! Teslimata %d sn kaldı" % int(ceil(time_left))
 	warn_lbl.text = warn
 	warn_lbl.visible = warn != "" and (fmod(Time.get_ticks_msec() / 1000.0, 0.7) < 0.5 or flip_t > 0.0)
 
@@ -1097,31 +1202,131 @@ func _build_background() -> void:
 		poly.polygon = pts
 		poly.color = Color(0.45, 0.6, 0.72) if far else Color(0.36, 0.55, 0.42)
 		pl.add_child(poly)
+		_mountains.append(poly)
 
 	_modulate = CanvasModulate.new()
 	add_child(_modulate)
+	_build_sky_objects(sky_layer)
 
 
-func _set_night(v: bool) -> void:
-	night = v
-	var g := Gradient.new()
-	if night:
-		g.set_color(0, Color(0.02, 0.03, 0.09))
-		g.set_color(1, Color(0.12, 0.15, 0.3))
-		_modulate.color = Color(0.5, 0.55, 0.78)
-	else:
-		g.set_color(0, Color(0.33, 0.6, 0.92))
-		g.set_color(1, Color(0.78, 0.9, 1.0))
-		_modulate.color = Color.WHITE
+## ---------------- GÜNDÜZ / GECE DÖNGÜSÜ ----------------
+## 0 = şafak, 0.06-0.42 gündüz (güneş), 0.5 gün batımı, 0.56-0.94 gece (ay + yıldızlar)
+const DAY_LENGTH := 240.0      # bir tam gün (sn)
+const SKY_KEYS: Array = [
+	# t, gök üst, gök alt, dünya rengi, dağ rengi
+	[0.00, Color(0.35, 0.42, 0.72), Color(1.0, 0.72, 0.52), Color(0.92, 0.84, 0.84), Color(0.85, 0.75, 0.8)],
+	[0.07, Color(0.33, 0.6, 0.92), Color(0.78, 0.9, 1.0), Color(1, 1, 1), Color(1, 1, 1)],
+	[0.42, Color(0.33, 0.6, 0.92), Color(0.78, 0.9, 1.0), Color(1, 1, 1), Color(1, 1, 1)],
+	[0.50, Color(0.27, 0.25, 0.52), Color(1.0, 0.55, 0.3), Color(1.0, 0.78, 0.66), Color(0.85, 0.6, 0.6)],
+	[0.57, Color(0.02, 0.03, 0.09), Color(0.1, 0.13, 0.28), Color(0.42, 0.47, 0.72), Color(0.3, 0.33, 0.5)],
+	[0.93, Color(0.02, 0.03, 0.09), Color(0.1, 0.13, 0.28), Color(0.42, 0.47, 0.72), Color(0.3, 0.33, 0.5)],
+	[1.00, Color(0.35, 0.42, 0.72), Color(1.0, 0.72, 0.52), Color(0.92, 0.84, 0.84), Color(0.85, 0.75, 0.8)],
+]
+static var day_t: float = 0.1      # sahne yeniden yüklense de gün devam etsin
+var _sky_grad: Gradient
+var _sun: Node2D
+var _moon: Node2D
+var _stars: Node2D
+var _mountains: Array[Node2D] = []
+var _sky_acc: float = 1.0
+
+
+func _build_sky_objects(sky_layer: CanvasLayer) -> void:
+	_sky_grad = Gradient.new()
 	var tex := GradientTexture2D.new()
-	tex.gradient = g
+	tex.gradient = _sky_grad
 	tex.fill_from = Vector2(0, 0)
 	tex.fill_to = Vector2(0, 1)
 	tex.width = 8
 	tex.height = 128
 	_sky.texture = tex
-	RenderingServer.set_default_clear_color(g.get_color(1))
-	_save()
+	# yıldızlar
+	_stars = Node2D.new()
+	sky_layer.add_child(_stars)
+	var r := RandomNumberGenerator.new()
+	r.seed = 4242
+	for i in range(90):
+		var st := Polygon2D.new()
+		var sz: float = r.randf_range(1.0, 2.6)
+		st.polygon = PackedVector2Array([Vector2(-sz, 0), Vector2(0, -sz), Vector2(sz, 0), Vector2(0, sz)])
+		st.position = Vector2(r.randf_range(0, 2600), r.randf_range(0, 900))
+		st.color = Color(1, 1, 0.9, r.randf_range(0.5, 1.0))
+		_stars.add_child(st)
+	# güneş (ışıltılı)
+	_sun = Node2D.new()
+	sky_layer.add_child(_sun)
+	_sun.add_child(_disc(95.0, Color(1.0, 0.85, 0.4, 0.18)))
+	_sun.add_child(_disc(68.0, Color(1.0, 0.85, 0.4, 0.3)))
+	_sun.add_child(_disc(46.0, Color(1.0, 0.93, 0.55)))
+	# ay (kraterli)
+	_moon = Node2D.new()
+	sky_layer.add_child(_moon)
+	_moon.add_child(_disc(70.0, Color(0.85, 0.9, 1.0, 0.12)))
+	_moon.add_child(_disc(38.0, Color(0.93, 0.94, 0.88)))
+	for c in [[Vector2(-10, -8), 8.0], [Vector2(12, 6), 6.0], [Vector2(-4, 14), 5.0], [Vector2(14, -14), 4.0]]:
+		var cr := _disc(float(c[1]), Color(0.78, 0.79, 0.74))
+		cr.position = c[0]
+		_moon.add_child(cr)
+
+
+func _disc(r: float, col: Color) -> Polygon2D:
+	var p := Polygon2D.new()
+	var pts := PackedVector2Array()
+	for i in range(32):
+		var a: float = TAU * float(i) / 32.0
+		pts.append(Vector2(cos(a), sin(a)) * r)
+	p.polygon = pts
+	p.color = col
+	return p
+
+
+func _sky_at(t: float) -> Array:
+	for k in range(SKY_KEYS.size() - 1):
+		var a: Array = SKY_KEYS[k]
+		var b: Array = SKY_KEYS[k + 1]
+		if t >= float(a[0]) and t <= float(b[0]):
+			var f: float = smoothstep(float(a[0]), float(b[0]), t)
+			var out: Array = []
+			for c in range(1, 5):
+				out.append((a[c] as Color).lerp(b[c] as Color, f))
+			return out
+	return [SKY_KEYS[1][1], SKY_KEYS[1][2], SKY_KEYS[1][3], SKY_KEYS[1][4]]
+
+
+## Gece ne kadar koyu: 0 gündüz .. 1 tam gece
+func night_amount() -> float:
+	var w: Color = _sky_at(day_t)[2]
+	return clampf((1.0 - w.r) / 0.58, 0.0, 1.0)
+
+
+func _update_sky(delta: float) -> void:
+	day_t = fmod(day_t + delta / DAY_LENGTH, 1.0)
+	_sky_acc += delta
+	if _sky_acc < 0.1:
+		return
+	_sky_acc = 0.0
+	var k: Array = _sky_at(day_t)
+	_sky_grad.set_color(0, k[0])
+	_sky_grad.set_color(1, k[1])
+	RenderingServer.set_default_clear_color(k[1])
+	_modulate.color = k[2]
+	for m in _mountains:
+		m.modulate = k[3]
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var na: float = night_amount()
+	_stars.modulate.a = clampf(na * 1.3 - 0.3, 0.0, 1.0)
+	# güneş: t 0..0.52 arasında soldan sağa yay çizer; ay: 0.5..1.02
+	var ps: float = day_t / 0.52
+	_sun.visible = ps <= 1.0
+	_sun.position = Vector2(lerpf(-0.05, 1.05, ps) * vp.x, vp.y * (0.62 - 0.5 * sin(PI * clampf(ps, 0.0, 1.0))))
+	var pm: float = fposmod(day_t - 0.5, 1.0) / 0.52
+	_moon.visible = pm <= 1.0
+	_moon.position = Vector2(lerpf(-0.05, 1.05, pm) * vp.x, vp.y * (0.62 - 0.48 * sin(PI * clampf(pm, 0.0, 1.0))))
+	# gece farlar daha parlak
+	if truck.body != null:
+		var far: Node = truck.body.get_node_or_null("Far")
+		if far is CanvasItem:
+			(far as CanvasItem).modulate = Color(1, 1, 1, 0.45 + 0.55 * na)
 
 
 # ======================= KAYIT =======================
@@ -1132,7 +1337,6 @@ func _load() -> void:
 	total_gold = int(cf.get_value("oyun", "altin", 0))
 	tokens = int(cf.get_value("oyun", "jeton", 0))
 	best_m = float(cf.get_value("oyun", "rekor", 0.0))
-	night = bool(cf.get_value("oyun", "gece", false))
 	music_on = bool(cf.get_value("ayar", "muzik", true))
 	sfx_on = bool(cf.get_value("ayar", "efekt", true))
 	owned = cf.get_value("oyun", "sahip", ["tosun"])
@@ -1155,7 +1359,6 @@ func _save() -> void:
 	cf.set_value("oyun", "altin", total_gold)
 	cf.set_value("oyun", "jeton", tokens)
 	cf.set_value("oyun", "rekor", best_m)
-	cf.set_value("oyun", "gece", night)
 	cf.set_value("ayar", "muzik", music_on)
 	cf.set_value("ayar", "efekt", sfx_on)
 	cf.set_value("oyun", "sahip", owned)

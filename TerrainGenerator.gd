@@ -34,6 +34,16 @@ var _rock_noise := FastNoiseLite.new()
 var _features: Dictionary = {}   # kesim no -> {kind, center, half, h}
 var _seed: int = 0
 
+## Bölge renkleri (her teslimat noktasında yeni bölge başlar): çim, toprak, derin toprak
+const ZONE_COLORS: Array = [
+	[Color(0.40, 0.74, 0.27), Color(0.45, 0.31, 0.19), Color(0.33, 0.22, 0.14)],   # Çayır
+	[Color(0.62, 0.70, 0.25), Color(0.52, 0.38, 0.22), Color(0.38, 0.27, 0.16)],   # Tepeler (kuru ot)
+	[Color(0.18, 0.50, 0.22), Color(0.36, 0.26, 0.17), Color(0.25, 0.18, 0.12)],   # Orman
+	[Color(0.55, 0.55, 0.42), Color(0.48, 0.44, 0.40), Color(0.35, 0.32, 0.30)],   # Dağ geçidi
+	[Color(0.72, 0.56, 0.36), Color(0.62, 0.42, 0.28), Color(0.46, 0.30, 0.20)],   # Kayalık vadi (kızıl)
+	[Color(0.90, 0.93, 0.97), Color(0.50, 0.50, 0.54), Color(0.36, 0.36, 0.40)],   # Zirve (karlı)
+]
+
 ## Yol kesimi türleri ve uyarı tabelaları
 const SIGNS := {"bumps": "TÜMSEKLİ YOL", "steep": "DİK YOKUŞ", "ramp": "RAMPA!", "rocky": "KAYALIK", "valley": "ÇUKUR"}
 
@@ -191,6 +201,18 @@ func update_around(x: float) -> void:
 			_chunks.erase(k)
 
 
+## x noktasındaki bölge renkleri (istasyonlarda yumuşak geçiş)
+func zone_colors_at(x: float) -> Array:
+	var cp: float = checkpoint_px()
+	var z: float = x / cp
+	var zi: int = clampi(floori(z), 0, ZONE_COLORS.size() - 1)
+	var zn: int = clampi(zi + 1, 0, ZONE_COLORS.size() - 1)
+	var f: float = smoothstep(0.92, 1.0, z - float(floori(z))) if x > 0.0 else 0.0
+	var a: Array = ZONE_COLORS[zi]
+	var b: Array = ZONE_COLORS[zn]
+	return [(a[0] as Color).lerp(b[0], f), (a[1] as Color).lerp(b[1], f), (a[2] as Color).lerp(b[2], f)]
+
+
 func _build_chunk(i: int) -> Node2D:
 	var x0: float = float(i) * chunk_width
 	var root := Node2D.new()
@@ -221,7 +243,10 @@ func _build_chunk(i: int) -> Node2D:
 	# --- görsel: toprak + derin katman + çim ---
 	var dirt := Polygon2D.new()
 	dirt.polygon = poly
-	dirt.color = ground_color
+	var dvc := PackedColorArray()
+	for p in poly:
+		dvc.append(zone_colors_at(p.x)[1])
+	dirt.vertex_colors = dvc
 	root.add_child(dirt)
 
 	var deep_pts := PackedVector2Array()
@@ -231,13 +256,31 @@ func _build_chunk(i: int) -> Node2D:
 	deep_pts.append(Vector2(x0, bottom_y))
 	var deep := Polygon2D.new()
 	deep.polygon = deep_pts
-	deep.color = deep_color
+	var cvc := PackedColorArray()
+	for p in deep_pts:
+		cvc.append(zone_colors_at(p.x)[2])
+	deep.vertex_colors = cvc
 	root.add_child(deep)
+	# çim çizgisi: bölge rengine göre degrade
+	var gg := Gradient.new()
+	var offs := PackedFloat32Array()
+	var gcols := PackedColorArray()
+	var gdark := PackedColorArray()
+	for k in range(0, top.size(), 4):
+		offs.append(float(k) / float(top.size() - 1))
+		var zc: Color = zone_colors_at(top[k].x)[0]
+		gcols.append(zc)
+		gdark.append(zc.darkened(0.42))
+	gg.offsets = offs
+	gg.colors = gcols
+	var gd := Gradient.new()
+	gd.offsets = offs
+	gd.colors = gdark
 
 	var edge := Line2D.new()
 	edge.points = top
 	edge.width = 22.0
-	edge.default_color = grass_dark
+	edge.gradient = gd
 	edge.joint_mode = Line2D.LINE_JOINT_ROUND
 	edge.position = Vector2(0, 6)
 	root.add_child(edge)
@@ -245,7 +288,7 @@ func _build_chunk(i: int) -> Node2D:
 	var grass := Line2D.new()
 	grass.points = top
 	grass.width = 12.0
-	grass.default_color = grass_color
+	grass.gradient = gg
 	grass.joint_mode = Line2D.LINE_JOINT_ROUND
 	root.add_child(grass)
 

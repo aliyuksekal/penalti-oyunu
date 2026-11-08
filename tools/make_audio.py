@@ -318,6 +318,19 @@ def effects():
         place(out, (np.sin(2 * np.pi * midi(nn) * t2) + 0.3 * np.sin(2 * np.pi * midi(nn) * 2.4 * t2)) * np.exp(-t2 * 6), 0.06 + i * 0.09, sr, 0.5)
     write("satin_al.wav", out, sr)
 
+    # turbo: yükselen hava "vuuş" + kısa patlama
+    tt = T(1.0)
+    sweep = bp(rng.normal(0, 1, len(tt)), 400, 6000, sr)
+    f = 300 + 2600 * tt
+    ph = 2 * np.pi * np.cumsum(f) / sr
+    whine = 0.25 * np.sin(ph) * np.minimum(1, tt / 0.1) * np.exp(-tt * 2.2)
+    write("turbo.wav", sweep * np.minimum(1, tt / 0.05) * np.exp(-tt * 3.0) + whine, sr, 0.7)
+
+    # geri vites ikazı: kısa "bip"
+    tt = T(0.22)
+    beep = np.sign(np.sin(2 * np.pi * 1250 * tt)) * 0.5 + 0.5 * np.sin(2 * np.pi * 1250 * tt)
+    write("bip.wav", lp(beep, 4000, sr) * np.minimum(1, tt / 0.005) * np.minimum(1, (0.22 - tt) / 0.01), sr, 0.5)
+
 
 if __name__ == "__main__":
     effects()

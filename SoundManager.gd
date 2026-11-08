@@ -3,7 +3,7 @@ extends Node
 ## ayrı ayrı açılıp kapatılır. Tüm sesler tools/make_audio.py ile sıfırdan sentezlendi.
 
 const MUSIC_FILES := {"garaj": "res://audio/muzik_garaj.wav", "yol": "res://audio/muzik_yol.wav"}
-const SFX_FILES := ["yuk_dustu", "teslimat", "oyun_bitti", "tik", "inis", "hararet", "satin_al"]
+const SFX_FILES := ["yuk_dustu", "teslimat", "oyun_bitti", "tik", "inis", "hararet", "satin_al", "turbo", "bip"]
 
 var MUSIC: Dictionary = {}
 var SFX: Dictionary = {}
