@@ -550,22 +550,6 @@ func _bus() -> void:
 	print("  ok  (bilgi) sakin sürüş: %d m, yolcu %d/%d, yerde %d" % [int(main._distance_m()), main.cargo.size(), n0, main.dropped.size()])
 	_check(main.cargo.size() >= n0 - 2, "normal sürüşte yolcular çoğunlukla yerinde (%d/%d)" % [main.cargo.size(), n0])
 	await _wait(1.0)
-	var n1: int = main.cargo.size()
-	main.truck.place_at(main.truck.body.global_position + Vector2(0, -320), 0.25)
-	for c in main.cargo:
-		c.global_position += Vector2(0, -320)
-		c.linear_velocity = Vector2.ZERO
-	await _wait(3.0)
-	print("  ok  (bilgi) sert düşüş: yolcu %d -> %d, yolda yatan %d" % [n1, main.cargo.size(), main.dropped.size()])
-	_check(main.cargo.size() < n1 or main.end_reason.contains("YOLCU"), "sert düşüşte yolcu düştü ve yolda görünüyor (%d -> %d)" % [n1, main.cargo.size()])
-	if main.game_over:
-		# hepsi düştüyse oyun biter; yeni seferle devam
-		get_tree().paused = false
-		main.open_menu()
-		main.game_over = false
-		main._build_truck()
-		main.start_game()
-		await _wait(0.8)
 	# otogara kadar götür: ücret alınır
 	var g0: int = main.gold_run
 	main.time_left = 100.0
@@ -592,6 +576,18 @@ func _bus() -> void:
 	await _wait(1.0)
 	_check(main.cargo.size() == main.truck.seat_count(), "yolcular üst katta ayakta (%d)" % main.cargo.size())
 	await _shot_if("bus_deck.png")
+	main.time_left = 100.0
+	_key(true)
+	await _wait(1.5)
+	_key(false)
+	var n1: int = main.cargo.size()
+	main.truck.place_at(main.truck.body.global_position + Vector2(0, -320), 0.25)
+	for c in main.cargo:
+		c.global_position += Vector2(0, -320)
+		c.linear_velocity = Vector2.ZERO
+	await _wait(3.0)
+	print("  ok  (bilgi) sert düşüş: yolcu %d -> %d, yolda yatan %d" % [n1, main.cargo.size(), main.dropped.size()])
+	_check(main.cargo.size() < n1 or main.end_reason.contains("YOLCU"), "sert düşüşte yolcu düştü ve yolda görünüyor (%d -> %d)" % [n1, main.cargo.size()])
 	main.select_map("koy")
 	main.select_truck("tosun")
 	print("SONUÇ: otobüs bitti")
