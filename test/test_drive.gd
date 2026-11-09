@@ -36,6 +36,7 @@ func _ready() -> void:
 		await _maps()
 		get_tree().quit()
 	elif cs == "bus":
+		await _dev_pin()
 		await _bus()
 		get_tree().quit()
 	elif cs == "touch":
@@ -521,6 +522,33 @@ func _maps() -> void:
 
 
 ## Otobüs: yolcular biner, sakin sürüşte pek düşmez, sert düşüşte düşer, teslimde ücret
+## Geliştirici PIN'i: logoya 7 dokunuş penceresi, yanlış PIN reddedilir, 4848 açar
+func _dev_pin() -> void:
+	main.set_dev_mode(false)
+	main.open_menu()
+	for pass_i in range(2):
+		var code: String = "1234" if pass_i == 0 else "4848"
+		main.menu._dev_dialog()
+		await get_tree().process_frame
+		var edits: Array = main.menu.find_children("*", "LineEdit", true, false)
+		var btns: Array = main.menu.find_children("*", "Button", true, false).filter(func(b): return b.text == "AÇ")
+		_check(edits.size() > 0 and btns.size() > 0, "PIN penceresi açıldı")
+		if edits.is_empty() or btns.is_empty():
+			return
+		edits[-1].text = code
+		btns[-1].pressed.emit()
+		await get_tree().process_frame
+		if pass_i == 0:
+			_check(not main.dev_mode, "yanlış PIN reddedildi")
+			for d in main.menu.get_children():
+				if d is ColorRect and d.get_child_count() > 0 and d.get_child(0) is CenterContainer:
+					d.queue_free()
+			await get_tree().process_frame
+		else:
+			_check(main.dev_mode, "PIN 4848 geliştirici modunu açtı")
+	main.set_dev_mode(false)
+
+
 func _bus() -> void:
 	main.dev_mode = true
 	for bid in ["minibus", "luks", "uzunyol"]:

@@ -511,15 +511,23 @@ func _play_intro() -> void:
 
 
 
+## Geliştirici modu (logoya 7 kez dokun + PIN): tüm kamyonlar ve haritalar satın almadan seçilir
+const DEV_PIN := "4848"
+
+
 func set_dev_mode(on: bool) -> void:
 	dev_mode = on
-	if not dev_mode and not owned.has(selected):
-		selected = "tosun"
+	if not dev_mode and (not owned.has(selected) or not maps_owned.has(map_id)):
+		if not owned.has(selected):
+			selected = "tosun"
+		if not maps_owned.has(map_id):
+			map_id = "koy"
+		_apply_world()
 		_build_truck()
 	_save()
 	if menu:
 		menu.refresh()
-	_toast("Geliştirici modu " + ("AÇIK: tüm kamyonlar seçilebilir" if on else "KAPALI"), 2.2)
+	_toast("Geliştirici modu " + ("AÇIK: tüm araçlar ve haritalar seçilebilir" if on else "KAPALI"), 2.2)
 
 
 ## Android geri tuşu: oyunda duraklat, duraklatmada devam et, menüde çık

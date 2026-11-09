@@ -232,13 +232,14 @@ func _dev_dialog() -> void:
 		ok.add_theme_font_size_override("font_size", 24)
 		manager._style_btn(ok, Color(0.15, 0.6, 0.3))
 		var try_pin := func() -> void:
-			if pin.text.strip_edges() == manager.DEV_PIN:
+			if pin.text.strip_edges() == String(manager.DEV_PIN):
 				manager.set_dev_mode(true)
 				dim.queue_free()
 			else:
 				pin.text = ""
 				pin.placeholder_text = "Yanlış PIN"
 		ok.pressed.connect(try_pin)
+		pin.text_submitted.connect(func(_t: String) -> void: try_pin.call())
 		box.add_child(ok)
 		pin.grab_focus()
 	var cancel := Button.new()
