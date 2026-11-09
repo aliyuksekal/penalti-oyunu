@@ -993,7 +993,8 @@ func _fit_plan(plan: Array) -> Array:
 		if station_fits(nx):
 			out = nx
 	var extra: int = 0
-	while extra < 40 and not plan.is_empty():
+	var big_bed: bool = truck.bed_right - truck.bed_left > 150.0   # sadece büyük kasalar fazladan dolar
+	while big_bed and extra < 40 and not plan.is_empty():
 		var nx2: Array = out.duplicate()
 		nx2.append(plan[extra % plan.size()])
 		if not station_fits(nx2):

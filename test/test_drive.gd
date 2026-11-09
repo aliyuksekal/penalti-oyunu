@@ -689,7 +689,7 @@ func _shots() -> void:
 	await _wait(0.4)
 
 func _physics_process(delta: float) -> void:
-	if _done or not _driving or _case() in ["economy", "alltrucks", "shots", "touch", "systems", "controls"]:
+	if _done or not _driving or _case() in ["economy", "alltrucks", "shots", "touch", "systems", "controls", "maps", "bus"]:
 		return
 	t += delta
 	var tr = main.truck
@@ -736,6 +736,7 @@ func _physics_process(delta: float) -> void:
 			print("SONUÇ: durum=%s neden=%s t=%.1f panel=%s" % [cs, main.end_reason, t, str(main.over_panel != null)])
 			get_tree().quit()
 		elif t > 25.0:
+			print("  HATA  (bilgi) dönüş=%.2f ters=%s flip_t=%.1f kurtarma=%d kurtarma_hakkı=%d panel=%s" % [tr.body.global_rotation, str(tr.is_flipped()), main.flip_t, main._recoveries, main.flip_rescues, str(main.rescue_panel != null)])
 			print("SONUÇ: durum=%s OYUN BİTMEDİ (HATA)" % cs)
 			get_tree().quit(1)
 		return
