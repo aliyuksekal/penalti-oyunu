@@ -369,14 +369,8 @@ func _stat(parent: Control, title: String, v: float) -> void:
 	h.add_child(pb)
 
 
-## Otobüs koltuk sayısı (TruckArt.paint_bus ile aynı hesap: her camda 2 yolcu)
 static func seats_of(d: Dictionary) -> int:
-	var wx: float = -150.0 - float(d.get("ext", 0.0)) + 12.0
-	var n: int = 0
-	while wx + 40.0 < 84.0:
-		n += 2
-		wx += 48.0
-	return n
+	return TruckArt.bus_seats(d)
 
 
 ## Kasa iç uzunluğu (px): kamyonda 132 + uzama, tırda dorse

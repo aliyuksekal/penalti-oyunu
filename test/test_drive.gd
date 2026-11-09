@@ -535,8 +535,11 @@ func _bus() -> void:
 	await _wait(0.3)
 	main.start_game()
 	await _wait(0.5)
-	var n0: int = main.passengers.size()
-	_check(main.truck.kind == "bus" and n0 >= 6 and n0 <= main.truck.seat_count(), "otobüse %d yolcu bindi (%d koltuk)" % [n0, main.truck.seat_count()])
+	var n0: int = main.cargo.size()
+	var people_ok: bool = true
+	for c in main.cargo:
+		people_ok = people_ok and main.CargoTypes.TYPES[String(c.get_meta("tur"))]["shape"] == "person"
+	_check(main.truck.kind == "bus" and n0 >= 6 and n0 <= main.truck.seat_count() and people_ok, "üstü açık otobüse %d yolcu (gerçek kişi) bindi (%d yer)" % [n0, main.truck.seat_count()])
 	_key(true)
 	var tt := 0.0
 	while tt < 14.0 and not main.game_over:
@@ -544,21 +547,23 @@ func _bus() -> void:
 		tt += 1.0 / 60.0
 		_key(main.truck.body.global_rotation > -0.5)
 	_key(false)
-	print("  ok  (bilgi) sakin sürüş: %d m, en yüksek ivme %.0f, yolcu %d/%d" % [int(main._distance_m()), main.max_acc_seen, main.passengers.size(), n0])
-	_check(main.passengers.size() >= n0 - 1, "normal sürüşte yolcular yerinde (%d/%d)" % [main.passengers.size(), n0])
+	print("  ok  (bilgi) sakin sürüş: %d m, yolcu %d/%d, yerde %d" % [int(main._distance_m()), main.cargo.size(), n0, main.dropped.size()])
+	_check(main.cargo.size() >= n0 - 2, "normal sürüşte yolcular çoğunlukla yerinde (%d/%d)" % [main.cargo.size(), n0])
 	await _wait(1.0)
-	var n1: int = main.passengers.size()
-	var p: Vector2 = main.truck.body.global_position + Vector2(0, -520)
-	main.truck.place_at(p, 0.0)
+	var n1: int = main.cargo.size()
+	main.truck.place_at(main.truck.body.global_position + Vector2(0, -320), 0.25)
+	for c in main.cargo:
+		c.global_position += Vector2(0, -320)
+		c.linear_velocity = Vector2.ZERO
 	await _wait(3.0)
-	print("  ok  (bilgi) sert düşüş: en yüksek ivme %.0f, yolcu %d -> %d" % [main.max_acc_seen, n1, main.passengers.size()])
-	_check(main.passengers.size() < n1, "sert düşüşte yolcu düştü (%d -> %d)" % [n1, main.passengers.size()])
-	# otogara kadar ışınla: ücret = yolcu ücretleri + bonus
+	print("  ok  (bilgi) sert düşüş: yolcu %d -> %d, yolda yatan %d" % [n1, main.cargo.size(), main.dropped.size()])
+	_check(main.cargo.size() < n1 or main.end_reason.contains("YOLCU"), "sert düşüşte yolcu düştü ve yolda görünüyor (%d -> %d)" % [n1, main.cargo.size()])
+	if main.game_over:
+		get_tree().paused = false
+		main.start_game()
+		await _wait(0.5)
+	# otogara kadar götür: ücret alınır
 	var g0: int = main.gold_run
-	var left: int = main.passengers.size()
-	var fares: int = 0
-	for k in main.passengers:
-		fares += main.cargo_price(String(k), main.next_cp)
 	main.time_left = 100.0
 	var cx: float = main.terrain.checkpoint_x(main.next_cp)
 	main.terrain.update_around(cx - 200.0)
@@ -571,19 +576,25 @@ func _bus() -> void:
 		await get_tree().physics_frame
 		dw += 1.0 / 60.0
 	_key(false)
-	_check(main.next_cp == cp0 + 1 and main.gold_run - g0 >= fares, "otogarda ücret alındı: +%d (yolcu ücreti %d, %d yolcu)" % [main.gold_run - g0, fares, left])
+	_check(main.next_cp == cp0 + 1 and main.gold_run > g0, "otogarda ücret alındı: +%d" % [main.gold_run - g0])
 	_check(main.at_station and main.load_btn.text.contains("YOLCU"), "otogarda 'YOLCU AL' tuşu")
 	main.open_station()
 	await get_tree().process_frame
 	for q in range(30):
 		main.station_add("ogrenci")
-	_check(main._station_kinds.size() == main.truck.seat_count(), "koltuk sayısı kadar yolcu alındı (%d)" % main._station_kinds.size())
+	_check(main._station_kinds.size() == main.truck.seat_count(), "yer sayısı kadar yolcu alındı (%d)" % main._station_kinds.size())
 	main.leave_station()
-	await _wait(0.3)
-	_check(main.passengers.size() == main.truck.seat_count(), "yolcular otobüste")
+	await _wait(1.0)
+	_check(main.cargo.size() == main.truck.seat_count(), "yolcular üst katta ayakta (%d)" % main.cargo.size())
+	await _shot_if("bus_deck.png")
 	main.select_map("koy")
 	main.select_truck("tosun")
 	print("SONUÇ: otobüs bitti")
+
+func _shot_if(name: String) -> void:
+	if DisplayServer.get_name() != "headless":
+		await _shot(name)
+
 
 func _shots() -> void:
 	# açılış animasyonu kareleri

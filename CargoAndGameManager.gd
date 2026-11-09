@@ -66,21 +66,8 @@ var selected: String = "tosun"
 ## Harita (bölüm): menüde seçilir
 var map_id: String = "koy"
 var maps_owned: Array = ["koy", "sehir", "otobus"]
-## Otobüs yolcuları (fiziksiz: sarsıntıda düşerler)
-const PASSENGERS := {
-	"ogrenci": {"name": "Öğrenci", "value": 12, "frag": 0.8},
-	"isci": {"name": "İşçi", "value": 15, "frag": 0.7},
-	"turist": {"name": "Turist", "value": 22, "frag": 1.0},
-	"aile": {"name": "Aile", "value": 30, "frag": 1.2},
-	"yasli": {"name": "Yaşlı", "value": 28, "frag": 1.6},
-	"isinsani": {"name": "İş insanı", "value": 35, "frag": 1.3},
-}
-const JOLT_FREE := 1700.0     # bu ivmeye kadar sarsıntı sayılmaz (px/sn²)
-const JOLT_LIMIT := 520.0     # sarsıntı birikimi bunu aşınca bir yolcu düşer
-var passengers: Array = []
-var jolt: float = 0.0
-var _prev_v: Vector2 = Vector2.ZERO
-var _acc_s: float = 0.0
+## Otobüs yolcuları artık gerçek (fizikli) kişiler: CargoTypes içinde, üst katta ayakta durur
+const PASSENGER_KINDS := ["ogrenci", "isci", "turist", "aile", "yasli", "isinsani"]
 var max_acc_seen: float = 0.0
 var up_levels: Dictionary = {}     # "kamyon:yükseltme" -> seviye
 var state: String = "menu"         # menu / play / over
@@ -653,7 +640,6 @@ func _recover_truck() -> void:
 func _rebuild_truck_at(x: float) -> void:
 	var keep: int = cargo.size()
 	var total: int = cargo_total
-	var pas: Array = passengers.duplicate()
 	var fuel0: float = truck.fuel if is_finite(truck.fuel) else truck.fuel_capacity
 	var heat0: float = truck.heat
 	var turbo0: float = truck.turbo_charge
@@ -668,9 +654,6 @@ func _rebuild_truck_at(x: float) -> void:
 		var c: RigidBody2D = cargo.pop_back()
 		c.queue_free()
 	cargo_total = total
-	if truck.kind == "bus":
-		passengers = pas
-		truck.set_passengers(passengers.size())
 	truck.fuel = clampf(fuel0, 0.0, truck.fuel_capacity)
 	truck.heat = clampf(heat0, 0.0, 100.0)
 	truck.turbo_charge = clampf(turbo0, 0.0, 1.0)
@@ -751,7 +734,7 @@ func is_bus() -> bool:
 
 ## Yük/yolcu sayısı
 func load_count() -> int:
-	return passengers.size() if is_bus() else cargo.size()
+	return cargo.size()
 
 
 ## Haritayı uygula: yollar, yer çekimi, gökyüzü (araca göre yol düzgünlüğü)
@@ -811,7 +794,6 @@ func _build_truck(at_x: float = 60.0) -> void:
 	_out_time.clear()
 	if truck.built:
 		truck.teardown()
-	passengers.clear()
 	var vid: String = active_vehicle()
 	truck.apply_model(TruckCatalog.by_id(vid), levels_of(vid))
 	var sx: float = at_x
@@ -822,6 +804,7 @@ func _build_truck(at_x: float = 60.0) -> void:
 
 func open_menu() -> void:
 	state = "menu"
+	ads.set_banner(false)
 	_reset_station()
 	truck.menu_view = true
 	for n in _hud_nodes:
@@ -852,6 +835,8 @@ func start_game() -> void:
 		menu.visible = false
 	for n in _hud_nodes:
 		n.visible = true
+	ads.set_banner(true)
+	_banner_h = -1.0
 	_reset_station()
 	snd.play_music("yol")
 
@@ -948,7 +933,15 @@ func _update_sounds(delta: float) -> void:
 	else:
 		_air_t += delta
 
+var _banner_t: float = 0.0
+
+
 func _process(delta: float) -> void:
+	_banner_t += delta
+	if _banner_t > 0.4:
+		_banner_t = 0.0
+		_layout_for_banner()
+		ads._place_box()
 	if not get_tree().paused:
 		_update_sky(delta)
 	if _toast_t > 0.0:
@@ -967,19 +960,16 @@ func _process(delta: float) -> void:
 func _spawn_cargo(chosen: Array = []) -> void:
 	var r := RandomNumberGenerator.new()
 	r.randomize()
-	if is_bus():
-		passengers = chosen.duplicate() if not chosen.is_empty() else _bus_plan(next_cp, r)
-		cargo_total = passengers.size()
-		truck.set_passengers(passengers.size())
-		jolt = 0.0
-		_prev_v = truck.body.linear_velocity
-		return
-	var kinds: Array = chosen if not chosen.is_empty() else _fit_plan(CargoTypes.load_plan(next_cp, r))
+	var plan0: Array = _bus_plan(next_cp, r) if is_bus() else CargoTypes.load_plan(next_cp, r)
+	var kinds: Array = chosen if not chosen.is_empty() else _fit_plan(plan0)
 	var pos: Array = CargoTypes.pack(kinds, truck.bed_left + 2.0, truck.bed_right - 2.0, truck.bed_floor)
 	cargo_total = kinds.size()
 	for i in range(kinds.size()):
 		var c: RigidBody2D = CargoTypes.make(String(kinds[i]), r)
 		c.set_meta("deger", cargo_price(String(kinds[i]), next_cp))
+		if is_bus() and c.physics_material_override != null:
+			# lüks otobüste yolcular daha sıkı tutunur
+			c.physics_material_override.friction *= float(truck.model.get("comfort", 1.0))
 		c.contact_monitor = true
 		c.max_contacts_reported = 2
 		c.body_entered.connect(_on_cargo_hit.bind(c))
@@ -999,8 +989,10 @@ func _fit_plan(plan: Array) -> Array:
 		if station_fits(nx):
 			out = nx
 	var extra: int = 0
-	var big_bed: bool = truck.bed_right - truck.bed_left > 150.0   # sadece büyük kasalar fazladan dolar
-	while big_bed and extra < 40 and not plan.is_empty():
+	var big_bed: bool = truck.bed_right - truck.bed_left > 150.0 and not is_bus()   # sadece büyük kasalar fazladan dolar
+	# yük %5 fazla: standart listeye yüzde 5 daha (yuvarlanarak) eklenir
+	var want: int = int(round(float(plan.size()) * 1.05))
+	while extra < 40 and not plan.is_empty() and (big_bed or out.size() < want):
 		var nx2: Array = out.duplicate()
 		nx2.append(plan[extra % plan.size()])
 		if not station_fits(nx2):
@@ -1057,9 +1049,6 @@ func _on_cargo_hit(_other: Node, c: RigidBody2D) -> void:
 
 
 func _check_cargo(delta: float) -> void:
-	if is_bus():
-		_check_passengers(delta)
-		return
 	for c in cargo.duplicate():
 		if truck.is_in_bed(c.global_position):
 			_out_time[c] = 0.0
@@ -1070,6 +1059,7 @@ func _check_cargo(delta: float) -> void:
 			cargo.erase(c)
 			_out_time.erase(c)
 			dropped.append(c)
+			c.lock_rotation = false   # düşen yolcu yuvarlanır
 			c.modulate = Color(1, 0.75, 0.75, 0.8)
 			_toast("%s düştü! %d/%d" % [CargoTypes.TYPES[String(c.get_meta("tur", "sandik"))]["name"], cargo.size(), cargo_total], 1.3)
 			snd.sfx("yuk_dustu", 0.0, 0.8)
@@ -1079,38 +1069,6 @@ func _check_cargo(delta: float) -> void:
 		if d.global_position.x < bx - 2500.0 or d.global_position.y > 6000.0:
 			dropped.erase(d)
 			d.queue_free()
-
-
-## Otobüs: sert iniş, ani fren/çarpma ve aşırı yatma yolcuları sarsar; birikince biri düşer
-func _check_passengers(delta: float) -> void:
-	var v: Vector2 = truck.body.linear_velocity
-	var acc: float = (v - _prev_v).length() / maxf(delta, 0.0001)
-	_prev_v = v
-	_acc_s = lerpf(_acc_s, acc, 0.25)
-	max_acc_seen = maxf(max_acc_seen, _acc_s)
-	var tilt: float = absf(wrapf(truck.body.global_rotation, -PI, PI))
-	var add: float = maxf(_acc_s - JOLT_FREE, 0.0) + maxf(tilt - 0.45, 0.0) * 2600.0
-	jolt = maxf(jolt + (add - 260.0) * delta, 0.0)
-	var lim: float = JOLT_LIMIT * float(truck.model.get("comfort", 1.0))   # lüks otobüs daha az sarsar
-	if jolt < lim or passengers.is_empty():
-		return
-	jolt = lim * 0.35
-	# kırılgan yolcu (yaşlı, aile) daha kolay düşer
-	var total: float = 0.0
-	for k in passengers:
-		total += float(PASSENGERS[k]["frag"])
-	var pick: float = randf() * total
-	var idx: int = 0
-	for i in range(passengers.size()):
-		pick -= float(PASSENGERS[passengers[i]]["frag"])
-		if pick <= 0.0:
-			idx = i
-			break
-	var who: String = passengers[idx]
-	passengers.remove_at(idx)
-	truck.set_passengers(passengers.size())
-	_toast("%s düştü! Yolcu %d/%d" % [String(PASSENGERS[who]["name"]), passengers.size(), cargo_total], 1.4)
-	snd.sfx("yuk_dustu", 0.0, 1.2)
 
 
 # ======================= TESLİMAT =======================
@@ -1143,8 +1101,6 @@ func _check_checkpoint() -> void:
 	for c in cargo:
 		if is_instance_valid(c):
 			cargo_value += clampi(int(c.get_meta("deger", gold_per_cargo)), 0, 400)
-	for pk in passengers:
-		cargo_value += cargo_price(String(pk), leg)
 	var reward: int = cargo_value + station_bonus * leg + time_bonus
 	if intact == cargo_total:
 		reward += perfect_bonus
@@ -1189,8 +1145,6 @@ func cargo_price(kind: String, leg: int) -> int:
 	var base: float = 0.0
 	if CargoTypes.TYPES.has(kind):
 		base = float(CargoTypes.TYPES[kind]["value"])
-	elif PASSENGERS.has(kind):
-		base = float(PASSENGERS[kind]["value"])
 	else:
 		return 0
 	base *= float(truck.model.get("pay", 1.0))   # tırda parça başı ücret daha düşük
@@ -1199,8 +1153,8 @@ func cargo_price(kind: String, leg: int) -> int:
 
 ## Kasa dolu mu: dizilince en üst sıra kasa duvarını çok aşmasın
 func station_fits(kinds: Array) -> bool:
-	if is_bus():
-		return kinds.size() <= truck.seat_count()
+	if is_bus() and kinds.size() > truck.seat_count():
+		return false
 	if kinds.size() > station_max_items():
 		return false
 	var pos: Array = CargoTypes.pack(kinds, truck.bed_left + 2.0, truck.bed_right - 2.0, truck.bed_floor)
@@ -1216,7 +1170,7 @@ func station_fits(kinds: Array) -> bool:
 ## Kasa uzunluğuna göre en fazla yük sayısı (tır dorsesi ~3 kamyon eder)
 func station_max_items() -> int:
 	var w: float = truck.bed_right - truck.bed_left
-	return clampi(int(round(STATION_MAX_ITEMS * w / 132.0)), STATION_MAX_ITEMS, 40)
+	return clampi(int(round(STATION_MAX_ITEMS * 1.05 * w / 132.0)), STATION_MAX_ITEMS, 42)
 
 
 func _station_offer_for(leg: int) -> Array:
@@ -1254,8 +1208,6 @@ func _enter_station() -> void:
 		if is_instance_valid(c):
 			c.queue_free()
 	cargo.clear()
-	passengers.clear()
-	truck.set_passengers(0)
 	_out_time.clear()
 	cargo_total = 0
 	_set_drive_controls(false)
@@ -1360,7 +1312,7 @@ func open_station() -> void:
 		b.custom_minimum_size = Vector2(200, 84)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_size_override("font_size", 22)
-		var nm: String = String(PASSENGERS[kind]["name"]) if PASSENGERS.has(kind) else String(CargoTypes.TYPES[kind]["name"])
+		var nm: String = String(CargoTypes.TYPES[kind]["name"])
 		b.text = "%s\n+%d altın" % [nm, cargo_price(kind, next_cp)]
 		b.set_meta("tur", kind)
 		_style_btn(b, Color(0.2, 0.42, 0.7))
@@ -1414,12 +1366,16 @@ func station_clear() -> void:
 
 ## Yükleri yeniden diz: tomruklar altta (uzun olduğu için), gerisi üstte
 func _respawn_station_cargo() -> void:
+	# eski yükleri HEMEN fizikten çıkar: yoksa yenileriyle bir kare üst üste binip
+	# patlar gibi itişir (tır dorsesi bu yüzden zıplayıp ters dönüyordu)
 	for c in cargo:
 		if is_instance_valid(c):
+			c.collision_layer = 0
+			c.collision_mask = 0
+			if c.get_parent() != null:
+				c.get_parent().remove_child(c)
 			c.queue_free()
 	cargo.clear()
-	passengers.clear()
-	truck.set_passengers(0)
 	_out_time.clear()
 	var logs: Array = _station_kinds.filter(func(k): return k == "tomruk")
 	var rest: Array = _station_kinds.filter(func(k): return k != "tomruk")
@@ -1640,6 +1596,7 @@ func _end(title: String, detail: String) -> void:
 		return
 	game_over = true
 	state = "over"
+	ads.set_banner(false)
 	end_reason = title
 	_saved_run = {}   # bitti: kaldığı yerden devam kaydı silinir
 	truck.engine_enabled = false
@@ -1982,18 +1939,58 @@ func _build_ui() -> void:
 	gauges.add_child(heat_gauge)
 	turbo_btn = TurboButton.new()
 	turbo_btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	turbo_btn.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	turbo_btn.offset_left = -236
-	turbo_btn.offset_right = -76
+	# turbo solda, fren pedalının üstünde
+	turbo_btn.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	turbo_btn.offset_left = 68
+	turbo_btn.offset_right = 228
 	turbo_btn.offset_top = -420
 	turbo_btn.offset_bottom = -260
 	root.add_child(turbo_btn)
+	_gauges = gauges
 	_hud_nodes = [top, warn_lbl, brake_btn, gas_btn, gauges, turbo_btn, zone_lbl, _gas_hint]
 
 
 ## Telefon çentiği / yuvarlak köşeler: arayüzü güvenli alanın içine al (sadece mobilde).
 ## Ekran döndürülünce yeniden hesaplanır; yatayda sadece yanlardan, dikeyde sadece üstten pay bırakılır
 ## (üst bilgi şeridi her zaman en üstte kalır).
+## Banner alt ortada: yatayda göstergeler, dikeyde bütün alt tuşlar banner'ın üstüne çıkar
+var _gauges: Control
+var _base_offsets: Dictionary = {}
+var _banner_h: float = -1.0
+
+
+func _layout_for_banner() -> void:
+	if _gauges == null:
+		return
+	var sz: Vector2 = ads.banner_size_logical()
+	var h: float = sz.y + 6.0 if sz.y > 0.0 else 0.0
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var portrait: bool = vp.y > vp.x
+	var key: float = h + (10000.0 if portrait else 0.0)
+	if is_equal_approx(key, _banner_h):
+		return
+	_banner_h = key
+	var all_nodes: Array = [_gauges, brake_btn, gas_btn, turbo_btn, _gas_hint, toast_lbl]
+	for n in all_nodes:
+		var c: Control = n
+		if c == null:
+			continue
+		if not _base_offsets.has(c):
+			_base_offsets[c] = Vector2(c.offset_top, c.offset_bottom)
+		var base: Vector2 = _base_offsets[c]
+		var shift: float = 0.0
+		if c == _gauges or c == toast_lbl:
+			shift = h
+		elif portrait:
+			shift = h
+		elif sz.x > 0.0:
+			# yatayda banner pedallara değmiyorsa pedallar yerinde kalır
+			var free_w: float = (gas_btn.get_global_rect().position.x - brake_btn.get_global_rect().end.x)
+			shift = h if sz.x > free_w - 8.0 else 0.0
+		c.offset_top = base.x - shift
+		c.offset_bottom = base.y - shift
+
+
 func _apply_safe_area(root: Control) -> void:
 	if not get_viewport().size_changed.is_connected(_on_resized):
 		get_viewport().size_changed.connect(_on_resized)
@@ -2072,7 +2069,7 @@ func _update_hud(delta: float) -> void:
 	speed_gauge.set_value(absf(truck.speed_kmh()), delta)
 	heat_gauge.set_value(truck.heat, delta)
 	if is_bus():
-		cargo_lbl.text = "YOLCU %d/%d  ~%d%%" % [passengers.size(), cargo_total, int(clampf(jolt / (JOLT_LIMIT * float(truck.model.get("comfort", 1.0))), 0.0, 1.0) * 100.0)]
+		cargo_lbl.text = "YOLCU %d/%d" % [cargo.size(), cargo_total]
 	else:
 		cargo_lbl.text = "YÜK %d/%d" % [cargo.size(), cargo_total]
 	cargo_lbl.add_theme_color_override("font_color", Color.WHITE if load_count() > 2 else Color(1, 0.45, 0.35))

@@ -241,58 +241,86 @@ static func paint_trailer(parent: Node2D, d: Dictionary, L: float, wheel_r: floa
 		_fender(parent, Vector2(float(tx), wy), wheel_r, bed_c.darkened(0.4))
 
 
-## Otobüs gövdesi çarpışma şekli
+## Üstü açık turizm otobüsü: alt kat kapalı gövde, üst kat açık güverte (yolcular ayakta)
+const BUS_DECK := -96.0      # üst kat zemini (gövdeye göre y)
+const BUS_RAIL := -128.0     # ön/arka korkuluk üstü
+
+
+static func bus_rear(ext: float) -> float:
+	return -150.0 - ext
+
+
+## Alt kat gövdesi çarpışma şekli (üst kat zemini dahil)
 static func bus_polygon(ext: float) -> PackedVector2Array:
-	var r: float = -150.0 - ext
-	return PackedVector2Array([Vector2(r, -128), Vector2(104, -128), Vector2(118, -114), Vector2(124, -60), Vector2(124, 14), Vector2(r, 14)])
+	var r: float = bus_rear(ext)
+	return PackedVector2Array([Vector2(r, BUS_DECK), Vector2(108, BUS_DECK), Vector2(122, -70), Vector2(124, 14), Vector2(r, 14)])
 
 
-## Şehirlerarası otobüs: uzun gövde, pencere sırası, yolcular, kapı, tabela
+## Ön ve arka korkuluk (yolcuyu tutan duvarlar)
+static func bus_rails(ext: float) -> Array:
+	var r: float = bus_rear(ext)
+	return [
+		PackedVector2Array([Vector2(r, BUS_RAIL + 6.0), Vector2(r + 8.0, BUS_RAIL + 6.0), Vector2(r + 8.0, BUS_DECK), Vector2(r, BUS_DECK)]),
+		PackedVector2Array([Vector2(96, BUS_RAIL - 4.0), Vector2(110, BUS_RAIL), Vector2(110, BUS_DECK), Vector2(96, BUS_DECK)]),
+	]
+
+
+## Koltuk (ayakta yolcu) sayısı: güverte uzunluğuna göre
+static func bus_seats(d: Dictionary) -> int:
+	var w: float = 96.0 - (bus_rear(float(d.get("ext", 0.0))) + 8.0)
+	return clampi(int(floor(w / 22.0)), 4, 20)
+
+
 static func paint_bus(parent: Node2D, d: Dictionary, wheel_r: float, wheel_y: float) -> void:
 	var body_c: Color = d["body"]
 	var acc: Color = d["accent"]
 	var ext: float = float(d.get("ext", 0.0))
-	var r: float = -150.0 - ext
+	var r: float = bus_rear(ext)
 	var chrome_top := Color(0.97, 0.98, 1.0)
 	var chrome_bot := Color(0.55, 0.58, 0.64)
 	var poly: PackedVector2Array = bus_polygon(ext)
 	_grad(parent, poly, body_c.lightened(0.3), body_c.darkened(0.25))
 	_line(parent, Array(poly) + [poly[0]], 2.5, body_c.darkened(0.6))
-	# alt etek + şerit
+	# alt etek + renkli şerit
 	_grad(parent, _rect(r, -20, 124, 14), acc.lightened(0.1), acc.darkened(0.35))
-	_poly(parent, _rect(r, -46, 120, -38), acc)
-	# yolcu camları (her camda yolcu başları: TruckController görünürlüğünü değiştirir)
-	var heads := Node2D.new()
-	heads.name = "Yolcular"
-	parent.add_child(heads)
+	_poly(parent, _rect(r, -36, 118, -30), acc)
+	# alt kat camları (koyu)
 	var wx: float = r + 12.0
-	var idx: int = 0
-	while wx + 40.0 < 84.0:
-		_grad(parent, _round_rect(wx, -112, wx + 40.0, -58, 4), Color(0.75, 0.9, 1.0), Color(0.28, 0.45, 0.62))
-		for j in range(2):
-			var h := Node2D.new()
-			h.name = "y%d" % idx
-			h.position = Vector2(wx + 11.0 + float(j) * 18.0, -70)
-			heads.add_child(h)
-			var tint: Color = [Color(0.95, 0.78, 0.62), Color(0.78, 0.56, 0.4), Color(0.6, 0.42, 0.3)][idx % 3]
-			_poly(h, _circle_at(Vector2(0, -8), 6.5, 12), tint)
-			_poly(h, _round_rect(-7, -1, 7, 10, 3), [Color(0.85, 0.2, 0.2), Color(0.2, 0.45, 0.85), Color(0.25, 0.65, 0.35), Color(0.85, 0.65, 0.15)][idx % 4])
-			idx += 1
-		_poly(parent, PackedVector2Array([Vector2(wx + 6, -58), Vector2(wx + 14, -58), Vector2(wx + 26, -112), Vector2(wx + 18, -112)]), Color(1, 1, 1, 0.22))
-		wx += 48.0
-	# ön cam + sürücü
-	_grad(parent, PackedVector2Array([Vector2(90, -112), Vector2(108, -112), Vector2(118, -64), Vector2(90, -64)]), Color(0.8, 0.93, 1.0), Color(0.3, 0.5, 0.68))
-	_poly(parent, _circle_at(Vector2(100, -78), 6.5, 12), Color(0.12, 0.14, 0.2, 0.55))
+	while wx + 38.0 < 56.0:
+		_grad(parent, _round_rect(wx, -86, wx + 38.0, -44, 4), Color(0.45, 0.6, 0.72), Color(0.15, 0.22, 0.3))
+		_poly(parent, PackedVector2Array([Vector2(wx + 5, -44), Vector2(wx + 12, -44), Vector2(wx + 24, -86), Vector2(wx + 17, -86)]), Color(1, 1, 1, 0.18))
+		wx += 46.0
+	# üst kat: zemin kenarı, yan korkuluk (ince), ön ve arka korkuluk
+	_line(parent, [Vector2(r, BUS_DECK), Vector2(108, BUS_DECK)], 4.0, body_c.darkened(0.45))
+	var rail := Line2D.new()
+	rail.points = PackedVector2Array([Vector2(r + 4.0, BUS_RAIL + 10.0), Vector2(100, BUS_RAIL + 10.0)])
+	rail.width = 3.0
+	rail.default_color = Color(0.85, 0.87, 0.9, 0.9)
+	rail.z_index = 2      # yolcuların önünde: korkuluğa tutunuyormuş gibi
+	parent.add_child(rail)
+	var px: float = r + 4.0
+	while px < 100.0:
+		var post := Line2D.new()
+		post.points = PackedVector2Array([Vector2(px, BUS_DECK), Vector2(px, BUS_RAIL + 10.0)])
+		post.width = 2.5
+		post.default_color = Color(0.8, 0.82, 0.86, 0.9)
+		post.z_index = 2
+		parent.add_child(post)
+		px += 44.0
+	for rp in bus_rails(ext):
+		_grad(parent, rp, acc.lightened(0.15), acc.darkened(0.3))
+	# ön cam (alt kat) + sürücü
+	_grad(parent, PackedVector2Array([Vector2(90, -90), Vector2(106, -90), Vector2(120, -62), Vector2(90, -62)]), Color(0.8, 0.93, 1.0), Color(0.3, 0.5, 0.68))
+	_poly(parent, _circle_at(Vector2(100, -74), 6.5, 12), Color(0.12, 0.14, 0.2, 0.55))
 	# kapı
-	_grad(parent, _round_rect(60, -104, 84, -2, 3), Color(0.55, 0.75, 0.9), Color(0.22, 0.35, 0.5))
-	_line(parent, [Vector2(72, -104), Vector2(72, -2)], 2.0, body_c.darkened(0.5))
-	# tabela
-	_poly(parent, _round_rect(r + 16.0, -126, r + 150.0, -114, 2), Color(0.05, 0.06, 0.08))
+	_grad(parent, _round_rect(60, -90, 84, -2, 3), Color(0.55, 0.75, 0.9), Color(0.22, 0.35, 0.5))
+	_line(parent, [Vector2(72, -90), Vector2(72, -2)], 2.0, body_c.darkened(0.5))
+	# yan yazı
 	var lab := Label.new()
-	lab.text = "ŞEHİRLERARASI"
-	lab.add_theme_font_size_override("font_size", 10)
-	lab.add_theme_color_override("font_color", Color(1.0, 0.7, 0.15))
-	lab.position = Vector2(r + 22.0, -128)
+	lab.text = "CITY TOUR" if ext < 0.0 else "TURİZM"
+	lab.add_theme_font_size_override("font_size", 13)
+	lab.add_theme_color_override("font_color", acc.darkened(0.2))
+	lab.position = Vector2(r + 14.0, -30)
 	parent.add_child(lab)
 	# far + stop + tampon
 	_poly(parent, _round_rect(116, -40, 125, -28, 2), Color(1.0, 0.97, 0.78))
@@ -305,37 +333,6 @@ static func paint_bus(parent: Node2D, d: Dictionary, wheel_r: float, wheel_y: fl
 	var axles: Array = _axles(d)
 	for i in range(axles.size()):
 		_fender(parent, Vector2(float(axles[i]), wheel_y), wheel_r, body_c.darkened(0.45))
-
-
-## Tekerlek boyası: dişli lastik, yanak, alaşım jant (delikler dönüşü gösterir), krom göbek
-static func paint_wheel(parent: Node2D, d: Dictionary, r: float) -> void:
-	var off: bool = d["tread"] == "offroad"
-	var rim_c: Color = d["rim"]
-	var n: int = 22 if off else 34
-	var depth: float = 5.0 if off else 2.2
-	var tire := PackedVector2Array()
-	for i in range(n * 2):
-		var a: float = TAU * float(i) / float(n * 2)
-		var rr: float = r if (i % 4) < 2 else r - depth
-		tire.append(Vector2(cos(a), sin(a)) * rr)
-	_poly(parent, tire, Color(0.1, 0.1, 0.11))
-	_poly(parent, _circle_at(Vector2.ZERO, r - depth - 1.5, 30), Color(0.17, 0.17, 0.19))
-	_poly(parent, _circle_at(Vector2.ZERO, r * 0.64, 28), rim_c.darkened(0.35))
-	var disc := _poly(parent, _circle_at(Vector2.ZERO, r * 0.58, 28), rim_c)
-	# üst-sol aydınlık, alt-sağ gölge
-	var vc := PackedColorArray()
-	for p in disc.polygon:
-		var k: float = clampf(0.5 - (p.x + p.y) / (r * 1.6), 0.0, 1.0)
-		vc.append(Color(1, 1, 1).lerp(Color(0.62, 0.62, 0.66), 1.0 - k))
-	disc.vertex_colors = vc
-	for i in range(6):
-		var a2: float = TAU * float(i) / 6.0
-		_poly(parent, _circle_at(Vector2(cos(a2), sin(a2)) * r * 0.36, r * 0.11, 10), rim_c.darkened(0.6))
-	_poly(parent, _circle_at(Vector2.ZERO, r * 0.2, 16), Color(0.92, 0.93, 0.96))
-	for i in range(5):
-		var a3: float = TAU * float(i) / 5.0 + 0.3
-		_poly(parent, _circle_at(Vector2(cos(a3), sin(a3)) * r * 0.12, 1.6, 6), Color(0.35, 0.36, 0.4))
-	_poly(parent, PackedVector2Array([Vector2(-r * 0.5, -r * 0.18), Vector2(-r * 0.18, -r * 0.5), Vector2(-r * 0.1, -r * 0.42), Vector2(-r * 0.42, -r * 0.1)]), Color(1, 1, 1, 0.25))
 
 
 ## Garaj ön izlemesi: fiziksiz, sadece görüntü. Uzun araçlar kutuya sığsın diye küçültülür.

@@ -13,6 +13,7 @@ extends Node
 const AD_UNITS := {
 	"interstitial": "ca-app-pub-3940256099942544/1033173712",
 	"rewarded": "ca-app-pub-3940256099942544/5224354917",
+	"banner": "ca-app-pub-3940256099942544/6300978111",
 }
 
 signal tokens_purchased(amount: int)
@@ -47,11 +48,69 @@ func _ready() -> void:
 		_bridge = load("res://AdMobBridge.gd").new()
 		_bridge.process_mode = Node.PROCESS_MODE_ALWAYS
 		add_child(_bridge)
-		_bridge.start(String(AD_UNITS["interstitial"]), String(AD_UNITS["rewarded"]))
+		_bridge.start(String(AD_UNITS["interstitial"]), String(AD_UNITS["rewarded"]), String(AD_UNITS["banner"]))
 
 
 func is_live() -> bool:
 	return _bridge != null
+
+
+# ---------------- BANNER ----------------
+## Oyun sırasında alt ortada küçük banner (320x50). Masaüstünde/testte aynı yerde yer tutucu kutu.
+var banner_on: bool = false
+var _banner_box: Panel
+
+
+func set_banner(on: bool) -> void:
+	banner_on = on
+	if _bridge != null:
+		_bridge.set_banner(on)
+		return
+	if _banner_box == null:
+		_banner_box = Panel.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.95, 0.95, 0.97)
+		sb.border_color = Color(0.6, 0.62, 0.68)
+		sb.set_border_width_all(2)
+		_banner_box.add_theme_stylebox_override("panel", sb)
+		_banner_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var l := Label.new()
+		l.text = "Reklam (test banner)"
+		l.add_theme_color_override("font_color", Color(0.3, 0.32, 0.38))
+		l.add_theme_font_size_override("font_size", 18)
+		l.set_anchors_preset(Control.PRESET_FULL_RECT)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_banner_box.add_child(l)
+		_layer.add_child(_banner_box)
+	_banner_box.visible = on
+	_place_box()
+
+
+## Banner'ın oyun ekranındaki (mantıksal) boyutu: alt orta. Yoksa sıfır.
+func banner_size_logical() -> Vector2:
+	if not banner_on:
+		return Vector2.ZERO
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	if _bridge != null:
+		var hp: int = _bridge.banner_height_px()
+		var win: Vector2i = DisplayServer.window_get_size()
+		if hp > 0 and win.y > 0:
+			var k: float = vp.y / float(win.y)
+			return Vector2(float(_bridge.banner_width_px()) * k, float(hp) * k)
+		return Vector2.ZERO
+	# yer tutucu: tipik telefonda 320x50 dp'nin kapladığı alan (kısa kenar ~393 dp)
+	var dp: float = minf(vp.x, vp.y) / 393.0
+	return Vector2(320.0, 50.0) * dp
+
+
+func _place_box() -> void:
+	if _banner_box == null:
+		return
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var sz: Vector2 = banner_size_logical()
+	_banner_box.size = sz
+	_banner_box.position = Vector2((vp.x - sz.x) * 0.5, vp.y - sz.y)
 
 
 func is_showing() -> bool:

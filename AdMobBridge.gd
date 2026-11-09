@@ -8,6 +8,10 @@ signal status_changed
 
 var interstitial_id: String = ""
 var rewarded_id: String = ""
+var banner_id: String = ""
+var _banner: AdView
+var _banner_want: bool = false
+var banner_loaded: bool = false
 
 var _inter: InterstitialAd
 var _reward: RewardedAd
@@ -18,9 +22,10 @@ var _retry_reward: float = 0.0
 var _consent_form: ConsentForm
 
 
-func start(inter_id: String, reward_id: String) -> void:
+func start(inter_id: String, reward_id: String, ban_id: String = "") -> void:
 	interstitial_id = inter_id
 	rewarded_id = reward_id
+	banner_id = ban_id
 	_request_consent()
 
 
@@ -53,6 +58,7 @@ func _init_ads() -> void:
 	done.on_initialization_complete = func(_s: InitializationStatus) -> void:
 		_load_inter()
 		_load_reward()
+		_make_banner()
 	MobileAds.initialize(done)
 
 
@@ -162,3 +168,44 @@ func show_rewarded(on_reward: Callable, on_cancel: Callable) -> bool:
 		st["earned"] = true
 	ad.show(earn)
 	return true
+
+
+
+# ---------------- banner (alt orta, küçük 320x50) ----------------
+func _make_banner() -> void:
+	if banner_id == "" or _banner != null:
+		return
+	_banner = AdView.new(banner_id, AdSize.BANNER, AdPosition.BOTTOM)
+	_banner.ad_listener.on_ad_loaded = func() -> void:
+		banner_loaded = true
+		if _banner_want:
+			_banner.show()
+		else:
+			_banner.hide()
+		status_changed.emit()
+	_banner.ad_listener.on_ad_failed_to_load = func(_e: LoadAdError) -> void:
+		banner_loaded = false
+	_banner.load_ad(AdRequest.new())
+
+
+func set_banner(on: bool) -> void:
+	_banner_want = on
+	if _banner == null or not banner_loaded:
+		return
+	if on:
+		_banner.show()
+	else:
+		_banner.hide()
+
+
+## Banner yüksekliği (ekran pikseli); yüklenmediyse 0
+func banner_height_px() -> int:
+	if _banner == null or not banner_loaded:
+		return 0
+	return _banner.get_height_in_pixels()
+
+
+func banner_width_px() -> int:
+	if _banner == null or not banner_loaded:
+		return 0
+	return _banner.get_width_in_pixels()

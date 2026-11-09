@@ -168,7 +168,14 @@ func build(spawn: Vector2) -> void:
 			_add_collision(body, PackedVector2Array([Vector2(-96, -10), Vector2(112, -10), Vector2(118, 2), Vector2(112, 14), Vector2(-96, 14)]))
 			_add_collision(body, TruckArt.cab_polygon(String(model["cab"])))
 		"bus":
+			# üstü açık turizm otobüsü: yolcular üst katta ayakta (kasa = üst güverte)
 			_add_collision(body, TruckArt.bus_polygon(ext))
+			for rp in TruckArt.bus_rails(ext):
+				_add_collision(body, rp)
+			bed_left = TruckArt.bus_rear(ext) + 8.0
+			bed_right = 96.0
+			bed_floor = TruckArt.BUS_DECK
+			bed_wall_top = TruckArt.BUS_RAIL
 		_:
 			bed_left = BED_LEFT - ext
 			bed_right = BED_RIGHT
@@ -625,31 +632,17 @@ func is_in_bed(world_pos: Vector2) -> bool:
 
 ## Kasaya sığan en yüksek yük yığını (kasa duvarını çok aşmasın)
 func bed_stack_limit() -> float:
-	return bed_floor - 72.0 * float(model.get("stack_k", 1.0))
+	if kind == "bus":
+		return bed_floor - 48.0   # yolcular tek sıra ayakta
+	return bed_floor - 75.6 * float(model.get("stack_k", 1.0))   # %5 daha yüksek istif
 
 
 func has_bed() -> bool:
-	return kind != "bus"
-
-
-## Otobüs: camlarda görünen yolcu sayısı
-func set_passengers(n: int) -> void:
-	if body == null:
-		return
-	var heads: Node = body.get_node_or_null("Yolcular")
-	if heads == null:
-		return
-	var i: int = 0
-	for h in heads.get_children():
-		(h as Node2D).visible = i < n
-		i += 1
+	return true
 
 
 func seat_count() -> int:
-	if body == null:
-		return 0
-	var heads: Node = body.get_node_or_null("Yolcular")
-	return heads.get_child_count() if heads != null else 0
+	return TruckArt.bus_seats(model) if kind == "bus" else 0
 
 
 # ---------------- yardımcılar ----------------

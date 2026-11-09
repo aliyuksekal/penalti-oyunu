@@ -11,6 +11,13 @@ const TYPES := {
 	"tup": {"name": "Gaz tüpü", "size": Vector2(40, 16), "mass": 0.35, "friction": 0.60, "bounce": 0.10, "shape": "capsule", "value": 40},
 	"balya": {"name": "Saman balyası", "size": Vector2(40, 26), "mass": 0.25, "friction": 0.95, "bounce": 0.05, "shape": "rect", "value": 15},
 	"odun": {"name": "Odun istifi", "size": Vector2(44, 28), "mass": 0.55, "friction": 1.0, "bounce": 0.02, "shape": "rect", "value": 28},
+	# Otobüs yolcuları: üstü açık turizm otobüsünün üst katında ayakta dururlar, sarsıntıda düşerler
+	"ogrenci": {"name": "Öğrenci", "size": Vector2(16, 40), "mass": 0.32, "friction": 1.3, "bounce": 0.05, "shape": "person", "value": 12},
+	"isci": {"name": "İşçi", "size": Vector2(18, 42), "mass": 0.38, "friction": 1.4, "bounce": 0.05, "shape": "person", "value": 15},
+	"turist": {"name": "Turist", "size": Vector2(17, 40), "mass": 0.34, "friction": 1.2, "bounce": 0.05, "shape": "person", "value": 22},
+	"aile": {"name": "Aile", "size": Vector2(20, 40), "mass": 0.36, "friction": 1.1, "bounce": 0.05, "shape": "person", "value": 30},
+	"yasli": {"name": "Yaşlı", "size": Vector2(16, 36), "mass": 0.3, "friction": 0.95, "bounce": 0.05, "shape": "person", "value": 28},
+	"isinsani": {"name": "İş insanı", "size": Vector2(17, 42), "mass": 0.34, "friction": 1.05, "bounce": 0.05, "shape": "person", "value": 35},
 	"koli": {"name": "Koli", "size": Vector2(26, 20), "mass": 0.15, "friction": 0.70, "bounce": 0.10, "shape": "rect", "value": 10},
 }
 
@@ -99,6 +106,11 @@ static func make(kind: String, rng: RandomNumberGenerator) -> RigidBody2D:
 		rs.size = sz
 		cs.shape = rs
 	c.add_child(cs)
+	if t["shape"] == "person":
+		# ayakta tutunur (dönmez); düşünce serbest kalır ve yuvarlanır
+		c.lock_rotation = true
+		c.center_of_mass_mode = RigidBody2D.CENTER_OF_MASS_MODE_CUSTOM
+		c.center_of_mass = Vector2(0, sz.y * 0.3)
 	_paint(c, kind, sz, rng)
 	return c
 
@@ -175,6 +187,8 @@ static func _paint(c: Node2D, kind: String, sz: Vector2, rng: RandomNumberGenera
 			for xx in [-h.x * 0.5, h.x * 0.5]:
 				_line(c, [Vector2(xx, -h.y), Vector2(xx, h.y)], 2.5, Color(0.2, 0.22, 0.25))
 			_line(c, Array(_rect(h)) + [Vector2(-h.x, -h.y)], 1.5, oc.darkened(0.5))
+		"ogrenci", "isci", "turist", "aile", "yasli", "isinsani":
+			_paint_person(c, kind, h, rng)
 		"koli":
 			var kc := Color(0.78, 0.6, 0.38)
 			_poly(c, _rect(h), kc)
@@ -221,3 +235,41 @@ static func _circle(c: Vector2, r: float, n: int) -> PackedVector2Array:
 		var a: float = TAU * float(k) / float(n)
 		pts.append(c + Vector2(cos(a), sin(a)) * r)
 	return pts
+
+
+## Ayakta duran yolcu: bacaklar, gövde (tişört), kollar, baş; türüne göre ayrıntı
+static func _paint_person(c: Node2D, kind: String, h: Vector2, rng: RandomNumberGenerator) -> void:
+	var skin: Color = [Color(0.96, 0.8, 0.64), Color(0.8, 0.58, 0.42), Color(0.6, 0.42, 0.3), Color(0.9, 0.7, 0.55)][rng.randi_range(0, 3)]
+	var shirt: Color = [Color(0.88, 0.2, 0.2), Color(0.2, 0.48, 0.88), Color(0.25, 0.68, 0.35), Color(0.95, 0.7, 0.15), Color(0.6, 0.3, 0.75)][rng.randi_range(0, 4)]
+	var pants: Color = [Color(0.18, 0.22, 0.35), Color(0.25, 0.25, 0.27), Color(0.45, 0.35, 0.25)][rng.randi_range(0, 2)]
+	match kind:
+		"isinsani":
+			shirt = Color(0.15, 0.17, 0.22)
+			pants = Color(0.12, 0.13, 0.17)
+		"isci":
+			shirt = Color(1.0, 0.55, 0.1)
+		"yasli":
+			pants = Color(0.35, 0.33, 0.3)
+	var top: float = -h.y
+	var head_r: float = 6.2
+	var neck: float = top + head_r * 2.0
+	var waist: float = neck + (h.y * 2.0 - head_r * 2.0) * 0.48
+	# bacaklar
+	_poly(c, PackedVector2Array([Vector2(-h.x * 0.75, waist), Vector2(-1, waist), Vector2(-1.5, h.y), Vector2(-h.x * 0.75, h.y)]), pants)
+	_poly(c, PackedVector2Array([Vector2(1, waist), Vector2(h.x * 0.75, waist), Vector2(h.x * 0.75, h.y), Vector2(1.5, h.y)]), pants.darkened(0.15))
+	_poly(c, _rect(Vector2(h.x * 0.85, 2.0), Vector2(0, h.y - 2.0)), Color(0.1, 0.1, 0.1))
+	# gövde
+	_poly(c, PackedVector2Array([Vector2(-h.x, neck + 2), Vector2(h.x, neck + 2), Vector2(h.x * 0.85, waist + 2), Vector2(-h.x * 0.85, waist + 2)]), shirt)
+	if kind == "isinsani":
+		_poly(c, PackedVector2Array([Vector2(-1.5, neck + 2), Vector2(1.5, neck + 2), Vector2(1, waist - 2), Vector2(-1, waist - 2)]), Color(0.85, 0.15, 0.2))
+	# kollar: tutunmak için yukarı kalkık (biri)
+	_line(c, [Vector2(-h.x, neck + 4), Vector2(-h.x - 4, neck - 6), Vector2(-h.x - 3, top + 2)], 3.5, skin)
+	_line(c, [Vector2(h.x, neck + 4), Vector2(h.x + 3, waist - 2)], 3.5, shirt.darkened(0.2))
+	# baş + saç
+	_poly(c, _circle(Vector2(0, top + head_r), head_r, 14), skin)
+	var hair: Color = Color(0.85, 0.85, 0.85) if kind == "yasli" else [Color(0.15, 0.1, 0.06), Color(0.4, 0.25, 0.12), Color(0.85, 0.7, 0.35)][rng.randi_range(0, 2)]
+	_poly(c, PackedVector2Array([Vector2(-head_r, top + head_r - 1), Vector2(-head_r * 0.6, top), Vector2(head_r * 0.6, top), Vector2(head_r, top + head_r - 1), Vector2(head_r * 0.4, top + 3)]), hair)
+	if kind == "turist":
+		_poly(c, PackedVector2Array([Vector2(-head_r - 3, top + 2), Vector2(head_r + 3, top + 2), Vector2(head_r * 0.6, top - 3), Vector2(-head_r * 0.6, top - 3)]), Color(0.95, 0.85, 0.4))
+		_poly(c, _rect(Vector2(3, 2.5), Vector2(h.x * 0.3, neck + 7)), Color(0.15, 0.15, 0.15))
+	_poly(c, _circle(Vector2(2.5, top + head_r - 1), 1.1, 6), Color(0.1, 0.1, 0.1))
