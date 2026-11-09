@@ -282,6 +282,7 @@ func _ready() -> void:
 	add_child(ads)
 	_build_background()
 	_build_ui()
+	ads.set_banner(true)   # banner her ekranda alt ortada (tuşlar etrafına dizilir)
 	_apply_world()
 	_build_truck()
 	_update_sky(0.2)
@@ -812,7 +813,6 @@ func _build_truck(at_x: float = 60.0) -> void:
 
 func open_menu() -> void:
 	state = "menu"
-	ads.set_banner(false)
 	_reset_station()
 	truck.menu_view = true
 	for n in _hud_nodes:
@@ -1604,7 +1604,6 @@ func _end(title: String, detail: String) -> void:
 		return
 	game_over = true
 	state = "over"
-	ads.set_banner(false)
 	end_reason = title
 	_saved_run = {}   # bitti: kaldığı yerden devam kaydı silinir
 	truck.engine_enabled = false
@@ -1974,6 +1973,15 @@ func _layout_for_banner() -> void:
 	var h: float = sz.y + 6.0 if sz.y > 0.0 else 0.0
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	var portrait: bool = vp.y > vp.x
+	if menu:
+		menu.layout_for_banner(sz, portrait)
+	# istasyon paneli ve YÜKLE tuşu banner'ın üstünde
+	if station_panel != null and is_instance_valid(station_panel):
+		station_panel.offset_top = -268.0 - h
+		station_panel.offset_bottom = -12.0 - h
+	if load_btn != null:
+		load_btn.offset_top = -150.0 - h
+		load_btn.offset_bottom = -50.0 - h
 	var key: float = h + (10000.0 if portrait else 0.0)
 	if is_equal_approx(key, _banner_h):
 		return

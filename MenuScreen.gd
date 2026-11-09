@@ -153,6 +153,51 @@ func _ready() -> void:
 	_scroll.add_child(_content)
 
 
+## Banner'a göre yerleşim: dikeyde tuşlar banner'ın üstünde; yatayda 2 tuş solda, 2 tuş sağda,
+## banner ortada kalır. Panel de banner'ın üstünde biter.
+var _spacer: Control
+
+
+func layout_for_banner(sz: Vector2, portrait: bool) -> void:
+	if _buttons == null:
+		return
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var h: float = sz.y + 10.0 if sz.y > 0.0 else 0.0
+	if _spacer == null:
+		_spacer = Control.new()
+		_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_buttons.add_child(_spacer)
+		_buttons.move_child(_spacer, 2)
+	var btns: Array = _buttons.get_children().filter(func(c): return c is Button)
+	var gap: float = 22.0
+	var side_by_side: bool = sz.x > 0.0 and not portrait
+	_spacer.visible = side_by_side
+	var lift: float = 0.0 if side_by_side else h
+	var avail: float = vp.x - 48.0
+	var bw: float = 262.0
+	if side_by_side:
+		_spacer.custom_minimum_size = Vector2(sz.x + 16.0, 10)
+		bw = floorf((avail - sz.x - 16.0 - gap * 4.0) / 4.0)
+	else:
+		bw = minf(262.0, floorf((avail - gap * 3.0) / 4.0))
+	bw = clampf(bw, 150.0, 262.0)
+	for b in btns:
+		(b as Button).custom_minimum_size = Vector2(bw, 120)
+		(b as Button).add_theme_font_size_override("font_size", 34 if bw >= 240.0 else (28 if bw >= 190.0 else 24))
+	var row_w: float = bw * 4.0 + gap * 3.0 + (sz.x + 16.0 + gap if side_by_side else 0.0)
+	_buttons.offset_left = -row_w * 0.5
+	_buttons.offset_right = row_w * 0.5
+	_buttons.offset_top = -170.0 - lift
+	_buttons.offset_bottom = -44.0 - lift
+	if side_by_side:
+		# yatayda tuşlar banner'la aynı hizada, ekranın altına yakın
+		_buttons.offset_top = -12.0 - 120.0
+		_buttons.offset_bottom = -12.0
+	_continue.offset_top = _buttons.offset_top - 80.0
+	_continue.offset_bottom = _buttons.offset_top - 16.0
+	_panel.offset_bottom = -14.0 - h
+
+
 func _big_btn(text: String, col: Color, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
