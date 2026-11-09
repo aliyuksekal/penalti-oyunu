@@ -113,6 +113,12 @@ jobs:
           grep distributionUrl "$WP"
           grep -n "minifyEnabled\|targetSdk\|compileSdk" android/build/build.gradle android/build/config.gradle | head -20
 
+      - name: AdMob indirme önbelleği
+        uses: actions/cache@v4
+        with:
+          path: ~/admob-dl
+          key: admob-v5.1.0-${{ env.GODOT_VERSION }}
+
       - name: AdMob eklentisi (Android kütüphaneleri)
         run: |
           set -e
@@ -121,7 +127,7 @@ jobs:
           mkdir -p ~/admob-dl
           Z=~/admob-dl/$B
           if [ ! -s "$Z" ]; then
-            curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -o "$Z" "https://github.com/poingstudios/godot-admob-plugin/releases/download/${ADMOB_VER}/$B"
+            curl -fsSL --retry 10 --retry-delay 15 --retry-all-errors -o "$Z" "https://github.com/poingstudios/godot-admob-plugin/releases/download/${ADMOB_VER}/$B"
           fi
           echo "f7fdf644d50c0e231d8f02ae044057e489d0bcafcf50e908a4858477e7ee05ee  $Z" | sha256sum -c -
           rm -rf addons/admob/android/bin && mkdir -p addons/admob/android/bin addons/admob/ios/bin
