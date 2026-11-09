@@ -42,6 +42,12 @@ static var restarts: int = 0
 @export var leg_time_bonus: float = 8.0      # her yeni bölgede eklenen süre (zor yollar)
 
 const ZONES: Array = ["Çayır Yolu", "Tepeler", "Orman Yolu", "Dağ Geçidi", "Kayalık Vadi", "Zirve Yolu", "Kartal Yuvası", "Bulutların Üstü"]
+const MAP_ZONE_NAMES := {
+	"sehir": ["Şehir Çıkışı", "Çevre Yolu", "Otoyol", "Viyadükler", "Sanayi Bölgesi", "Sahil Yolu", "Boğaz Geçişi", "Başkent Girişi"],
+	"otobus": ["Merkez Otogar", "Çevre Yolu", "Otoyol", "Mola Tesisi", "Viyadükler", "Sahil Yolu", "Dağ Geçişi", "Varış Otogarı"],
+	"ay": ["Sükûnet Denizi", "Krater Vadisi", "Tozlu Ova", "Kopernik Krateri", "Karanlık Yüz", "Tycho Yaylası", "Kutup Üssü", "Ay Zirvesi"],
+	"uzay": ["Yıldız Kapısı", "Işık Köprüsü", "Meteor Kuşağı", "Halka Yolu", "Nebula Geçidi", "Kara Delik Kıyısı", "Galaksi Merkezi", "Sonsuzluk"],
+}
 
 @onready var terrain = $Terrain   # TerrainGenerator.gd
 @onready var truck = $Truck       # TruckController.gd
@@ -1112,7 +1118,8 @@ func _leg_time(k: int) -> float:
 
 
 func zone_name(k: int) -> String:
-	return ZONES[mini(k - 1, ZONES.size() - 1)]
+	var names: Array = MAP_ZONE_NAMES.get(map_id, ZONES)
+	return names[clampi(k - 1, 0, names.size() - 1)]
 
 
 func _check_checkpoint() -> void:
@@ -2063,7 +2070,7 @@ func _update_hud(delta: float) -> void:
 	dist_lbl.text = "%d m" % int(_distance_m())
 	gold_lbl.text = "ALTIN %d" % gold_run
 	var to_next: float = (terrain.checkpoint_x(next_cp) - truck.body.global_position.x) / PX_PER_M
-	next_lbl.text = "TESLİMAT: %d m" % maxi(int(to_next), 0)
+	next_lbl.text = "%s: %d m" % ["OTOGAR" if is_bus() else "TESLİMAT", maxi(int(to_next), 0)]
 	var tl: int = maxi(int(ceil(time_left)), 0)
 	timer_lbl.text = "SÜRE %d:%02d" % [tl / 60, tl % 60]
 	timer_lbl.add_theme_color_override("font_color", Color(1, 0.35, 0.3) if time_left < 15.0 else Color.WHITE)
@@ -2570,9 +2577,18 @@ func _set_sky_mode(m: String) -> void:
 	var space: bool = m != ""
 	if _cloud_layer:
 		_cloud_layer.visible = not space
+	var i_m: int = 0
 	for mt in _mountains:
 		if mt is Polygon2D:
-			(mt as Polygon2D).visible = m != "uzay"
+			var poly := mt as Polygon2D
+			if not poly.has_meta("renk"):
+				poly.set_meta("renk", poly.color)
+			poly.visible = m != "uzay"
+			if m == "ay":
+				poly.color = Color(0.3, 0.31, 0.35) if i_m == 0 else Color(0.42, 0.42, 0.45)
+			else:
+				poly.color = poly.get_meta("renk")
+			i_m += 1
 	if _earth:
 		_earth.visible = m == "ay"
 	if _planet:
@@ -2643,7 +2659,7 @@ func _update_space_sky() -> void:
 	RenderingServer.set_default_clear_color(bot)
 	_modulate.color = Color(0.95, 0.96, 1.0) if _sky_mode == "ay" else Color(0.92, 0.88, 1.0)
 	for m in _mountains:
-		m.modulate = Color(0.55, 0.56, 0.6) if _sky_mode == "ay" else Color(0.5, 0.4, 0.7)
+		m.modulate = Color(1, 1, 1)
 	_stars.modulate.a = 1.0
 	_sun.visible = false
 	_moon.visible = false
