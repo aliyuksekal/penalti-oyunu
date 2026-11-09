@@ -148,7 +148,7 @@ jobs:
       - name: Otomatik testler (sürüş, oyun sonu, ekonomi, tüm kamyonlar)
         run: |
           fail=0
-          for c in controls systems economy alltrucks touch drive flip fuel cargo; do
+          for c in controls systems economy alltrucks maps bus touch drive flip fuel cargo; do
             echo "===== $c"
             timeout 240 godot --headless --path . res://test/test.tscn -- --case=$c > case_$c.log 2>&1 || true
             grep -E "ok  |HATA|SONUÇ|SCRIPT ERROR|ERROR|at: " case_$c.log | head -40

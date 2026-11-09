@@ -1,5 +1,5 @@
 extends RefCounted
-## Yük çeşitleri: sandık, tomruk, varil, çuval, gaz tüpü, saman balyası, koli.
+## Yük çeşitleri: sandık, tomruk, odun istifi, varil, çuval, gaz tüpü, saman balyası, koli.
 ## Her birinin kendi ağırlığı, sürtünmesi, şekli (tomruk ve tüp yuvarlanır!) ve değeri var.
 ## İlerledikçe kasaya daha çok ve daha zor yük konur. Görseller kodla çizilir.
 
@@ -10,6 +10,7 @@ const TYPES := {
 	"cuval": {"name": "Çuval", "size": Vector2(34, 18), "mass": 0.45, "friction": 1.10, "bounce": 0.0, "shape": "capsule", "value": 15},
 	"tup": {"name": "Gaz tüpü", "size": Vector2(40, 16), "mass": 0.35, "friction": 0.60, "bounce": 0.10, "shape": "capsule", "value": 40},
 	"balya": {"name": "Saman balyası", "size": Vector2(40, 26), "mass": 0.25, "friction": 0.95, "bounce": 0.05, "shape": "rect", "value": 15},
+	"odun": {"name": "Odun istifi", "size": Vector2(44, 28), "mass": 0.55, "friction": 1.0, "bounce": 0.02, "shape": "rect", "value": 28},
 	"koli": {"name": "Koli", "size": Vector2(26, 20), "mass": 0.15, "friction": 0.70, "bounce": 0.10, "shape": "rect", "value": 10},
 }
 
@@ -30,12 +31,12 @@ static func load_plan(leg: int, rng: RandomNumberGenerator) -> Array:
 		3:
 			plan = ["tomruk", "tomruk", "varil", "varil", "sandik", "sandik"]
 		4:
-			plan = ["tomruk", "tomruk", "varil", "varil", "koli", "koli", "tup"]
+			plan = ["tomruk", "tomruk", "varil", "odun", "koli", "koli", "tup"]
 		5:
 			plan = ["tomruk", "tomruk", "tomruk", "varil", "varil", "balya", "tup"]
 		_:
 			plan = ["tomruk", "tomruk"]
-			var pool: Array = ["sandik", "varil", "cuval", "tup", "balya", "koli", "tomruk"]
+			var pool: Array = ["sandik", "varil", "cuval", "tup", "balya", "koli", "tomruk", "odun"]
 			var n: int = mini(8, 6 + (leg - 6) / 2)
 			while plan.size() < n:
 				plan.append(pool[rng.randi_range(0, pool.size() - 1)])
@@ -51,16 +52,17 @@ static func load_plan(leg: int, rng: RandomNumberGenerator) -> Array:
 
 
 ## Yükleri kasaya raf raf diz: soldan sağa, sığmayınca bir üst sıra
-static func pack(kinds: Array) -> Array:
+## x0/x1/floor: kasanın iç sınırları (uzun kasalı kamyonda ve tır dorsesinde daha geniş)
+static func pack(kinds: Array, x0: float = BED_X0, x1: float = BED_X1, floor_y: float = BED_FLOOR) -> Array:
 	var out: Array = []
-	var x: float = BED_X0
-	var y: float = BED_FLOOR
+	var x: float = x0
+	var y: float = floor_y
 	var row_h: float = 0.0
 	for k in kinds:
 		var sz: Vector2 = TYPES[k]["size"]
-		if x + sz.x > BED_X1 + 0.5 and x > BED_X0:
+		if x + sz.x > x1 + 0.5 and x > x0:
 			y -= row_h + 1.0
-			x = BED_X0
+			x = x0
 			row_h = 0.0
 		out.append(Vector2(x + sz.x * 0.5, y - sz.y * 0.5 - 0.5))
 		x += sz.x + 2.0
@@ -157,6 +159,22 @@ static func _paint(c: Node2D, kind: String, sz: Vector2, rng: RandomNumberGenera
 			for xx in [-h.x * 0.45, h.x * 0.45]:
 				_line(c, [Vector2(xx, -h.y), Vector2(xx, h.y)], 2.0, Color(0.5, 0.3, 0.15))
 			_line(c, Array(_rect(h)) + [Vector2(-h.x, -h.y)], 2.0, bc.darkened(0.4))
+		"odun":
+			# istif odun: kesilmiş kütükler üst üste, iki kayışla bağlı (uçları görünüyor)
+			var oc := Color(0.45, 0.3, 0.18)
+			_poly(c, _rect(h), oc.darkened(0.35))
+			var rr: float = 6.2
+			for row in range(2):
+				for col in range(3):
+					var cc := Vector2(-h.x + 8.0 + float(col) * 14.0 + (7.0 if row == 1 else 0.0), h.y - 7.5 - float(row) * 12.5)
+					if absf(cc.x) > h.x - 5.0:
+						continue
+					_poly(c, _circle(cc, rr + 1.2, 12), oc.darkened(0.25 + rng.randf_range(0.0, 0.15)))
+					_poly(c, _circle(cc, rr - 0.8, 12), Color(0.88, 0.72, 0.48).darkened(rng.randf_range(0.0, 0.12)))
+					_line(c, Array(_circle(cc, rr * 0.45, 8)) + [_circle(cc, rr * 0.45, 8)[0]], 1.0, Color(0.62, 0.44, 0.26))
+			for xx in [-h.x * 0.5, h.x * 0.5]:
+				_line(c, [Vector2(xx, -h.y), Vector2(xx, h.y)], 2.5, Color(0.2, 0.22, 0.25))
+			_line(c, Array(_rect(h)) + [Vector2(-h.x, -h.y)], 1.5, oc.darkened(0.5))
 		"koli":
 			var kc := Color(0.78, 0.6, 0.38)
 			_poly(c, _rect(h), kc)

@@ -15,6 +15,8 @@ const CargoTypes = preload("res://CargoTypes.gd")
 const MenuScreen = preload("res://MenuScreen.gd")
 const AdService = preload("res://AdService.gd")
 const SoundManager = preload("res://SoundManager.gd")
+const TruckController = preload("res://TruckController.gd")
+const TerrainGen = preload("res://TerrainGenerator.gd")
 
 ## Yükseltmeler (ALTIN ile, her kamyonun kendi seviyeleri var)
 const UPGRADES: Array = [
@@ -55,6 +57,25 @@ var cargo_total: int = 5          # bu teslimatta yüklenen yük sayısı
 var dev_mode: bool = false        # geliştirici modu: tüm kamyonlar seçilebilir
 var owned: Array = ["tosun"]
 var selected: String = "tosun"
+## Harita (bölüm): menüde seçilir
+var map_id: String = "koy"
+var maps_owned: Array = ["koy", "sehir", "otobus"]
+## Otobüs yolcuları (fiziksiz: sarsıntıda düşerler)
+const PASSENGERS := {
+	"ogrenci": {"name": "Öğrenci", "value": 12, "frag": 0.8},
+	"isci": {"name": "İşçi", "value": 15, "frag": 0.7},
+	"turist": {"name": "Turist", "value": 22, "frag": 1.0},
+	"aile": {"name": "Aile", "value": 30, "frag": 1.2},
+	"yasli": {"name": "Yaşlı", "value": 28, "frag": 1.6},
+	"isinsani": {"name": "İş insanı", "value": 35, "frag": 1.3},
+}
+const JOLT_FREE := 1700.0     # bu ivmeye kadar sarsıntı sayılmaz (px/sn²)
+const JOLT_LIMIT := 520.0     # sarsıntı birikimi bunu aşınca bir yolcu düşer
+var passengers: Array = []
+var jolt: float = 0.0
+var _prev_v: Vector2 = Vector2.ZERO
+var _acc_s: float = 0.0
+var max_acc_seen: float = 0.0
 var up_levels: Dictionary = {}     # "kamyon:yükseltme" -> seviye
 var state: String = "menu"         # menu / play / over
 var ads: Node
@@ -268,6 +289,7 @@ func _ready() -> void:
 	add_child(ads)
 	_build_background()
 	_build_ui()
+	_apply_world()
 	_build_truck()
 	_update_sky(0.2)
 	if skip_menu:
@@ -550,7 +572,7 @@ func saved_run_label() -> String:
 func _save_run() -> void:
 	if state != "play" or game_over:
 		return
-	_saved_run = {"cp": next_cp, "gold": gold_run, "seed": terrain.get_seed(), "truck": selected,
+	_saved_run = {"cp": next_cp, "gold": gold_run, "seed": terrain.get_seed(), "truck": selected, "map": map_id,
 		"fuel_ads": fuel_ads, "flips": flip_rescues, "delivered": delivered}
 	_save()
 
@@ -575,8 +597,11 @@ func resume_run() -> void:
 	delivered = clampi(int(r.get("delivered", 0)), 0, 100000)
 	fuel_ads = clampi(int(r.get("fuel_ads", 0)), 0, FUEL_AD_STEPS.size())
 	flip_rescues = clampi(int(r.get("flips", 0)), 0, MAX_RESCUES)
+	var mid: String = String(r.get("map", map_id))
+	if maps_owned.has(mid) or dev_mode:
+		map_id = mid
 	var x: float = terrain.checkpoint_x(cp - 1) + 80.0
-	terrain.reseed(int(r.get("seed", 1)), x)
+	_apply_world(int(r.get("seed", 1)), x)
 	_build_truck(x)
 	if menu:
 		menu.close_panel()
@@ -586,9 +611,7 @@ func resume_run() -> void:
 
 
 func _truck_finite() -> bool:
-	var parts: Array = [truck.body]
-	parts.append_array(truck.wheels)
-	for b in parts:
+	for b in truck.rigid_parts():
 		var rb: RigidBody2D = b
 		if not (rb.global_position.is_finite() and rb.linear_velocity.is_finite() and is_finite(rb.angular_velocity) and is_finite(rb.global_rotation)):
 			return false
@@ -597,9 +620,7 @@ func _truck_finite() -> bool:
 
 ## Fizik motoru patlamasın: aşırı hızları sınırla (gerçek oyunda asla bu kadar hızlanılmaz)
 func _limit_speeds() -> void:
-	var parts: Array = [truck.body]
-	parts.append_array(truck.wheels)
-	for b in parts:
+	for b in truck.rigid_parts():
 		var rb: RigidBody2D = b
 		if rb.linear_velocity.length() > 6000.0:
 			rb.linear_velocity = rb.linear_velocity.limit_length(6000.0)
@@ -626,6 +647,7 @@ func _recover_truck() -> void:
 func _rebuild_truck_at(x: float) -> void:
 	var keep: int = cargo.size()
 	var total: int = cargo_total
+	var pas: Array = passengers.duplicate()
 	var fuel0: float = truck.fuel if is_finite(truck.fuel) else truck.fuel_capacity
 	var heat0: float = truck.heat
 	var turbo0: float = truck.turbo_charge
@@ -640,6 +662,9 @@ func _rebuild_truck_at(x: float) -> void:
 		var c: RigidBody2D = cargo.pop_back()
 		c.queue_free()
 	cargo_total = total
+	if truck.kind == "bus":
+		passengers = pas
+		truck.set_passengers(passengers.size())
 	truck.fuel = clampf(fuel0, 0.0, truck.fuel_capacity)
 	truck.heat = clampf(heat0, 0.0, 100.0)
 	truck.turbo_charge = clampf(turbo0, 0.0, 1.0)
@@ -697,9 +722,79 @@ func unstuck() -> void:
 ## zeminin üstünde kalır (yokuşta tekerlek toprağın içine gömülüp düşmesin)
 func safe_drop_y(x: float, gap: float) -> float:
 	var top: float = terrain.height_at(x)
-	for dx in [-110.0, -78.0, -40.0, 40.0, 78.0, 110.0]:
-		top = minf(top, terrain.height_at(x + dx))
+	var pts: Array = [-110.0, -78.0, -40.0, 40.0, 78.0, 110.0]
+	var def: Dictionary = truck.model if not truck.model.is_empty() else TruckCatalog.by_id(active_vehicle())
+	for fx in TruckController.footprint(def):
+		pts.append(float(fx))
+		pts.append(float(fx) - 30.0)
+		pts.append(float(fx) + 30.0)
+	for dx in pts:
+		top = minf(top, terrain.height_at(x + float(dx)))
 	return top - gap - (truck.wheel_r - 26.0)
+
+
+## Bu haritada sürülen araç (Otobüs Hattı'nda otobüs, diğerlerinde seçili kamyon)
+func active_vehicle() -> String:
+	var forced: String = String(TerrainGen.MAPS.get(map_id, {}).get("vehicle", ""))
+	return forced if forced != "" else selected
+
+
+func is_bus() -> bool:
+	return truck.kind == "bus"
+
+
+## Yük/yolcu sayısı
+func load_count() -> int:
+	return passengers.size() if is_bus() else cargo.size()
+
+
+## Haritayı uygula: yollar, yer çekimi, gökyüzü (araca göre yol düzgünlüğü)
+func _apply_world(seed_v: int = 0, focus_x: float = 0.0) -> void:
+	if not TerrainGen.MAPS.has(map_id):
+		map_id = "koy"
+	var def: Dictionary = TruckCatalog.by_id(active_vehicle())
+	terrain.configure(map_id, float(def.get("smooth", 1.0)))
+	var md: Dictionary = terrain.map_def()
+	PhysicsServer2D.area_set_param(get_world_2d().space, PhysicsServer2D.AREA_PARAM_GRAVITY, 980.0 * float(md["gravity"]))
+	terrain.reseed(seed_v if seed_v != 0 else randi(), focus_x)
+	_set_sky_mode(String(md["sky"]))
+
+
+## Menüden harita seç
+func select_map(id: String) -> void:
+	if not TerrainGen.MAPS.has(id):
+		return
+	if not maps_owned.has(id) and not dev_mode:
+		return
+	map_id = id
+	_saved_run = {}
+	_save()
+	_apply_world()
+	_build_truck()
+	if menu:
+		menu.refresh()
+
+
+func map_price(id: String) -> int:
+	return int(TerrainGen.MAPS.get(id, {}).get("price", 0))
+
+
+## Haritanın kilidini jetonla aç
+func buy_map(id: String) -> void:
+	if maps_owned.has(id) or not TerrainGen.MAPS.has(id):
+		return
+	var price: int = map_price(id)
+	if tokens < price:
+		_toast("Yeterli jeton yok: %d gerekli" % price, 1.6)
+		return
+	var ok := func() -> void:
+		tokens -= price
+		maps_owned.append(id)
+		_save()
+		select_map(id)
+		snd.sfx("satin_al")
+		_toast("%s açıldı!" % String(TerrainGen.MAPS[id]["name"]), 2.0)
+	ads.show_interstitial(ok)
 
 
 ## Seçili kamyonu (ve yükseltmelerini) başlangıç noktasında kur, kasayı yükle
@@ -710,7 +805,9 @@ func _build_truck(at_x: float = 60.0) -> void:
 	_out_time.clear()
 	if truck.built:
 		truck.teardown()
-	truck.apply_model(TruckCatalog.by_id(selected), levels_of(selected))
+	passengers.clear()
+	var vid: String = active_vehicle()
+	truck.apply_model(TruckCatalog.by_id(vid), levels_of(vid))
 	var sx: float = at_x
 	truck.build(Vector2(sx, safe_drop_y(sx, 95.0)))
 	start_x = 60.0
@@ -864,8 +961,15 @@ func _process(delta: float) -> void:
 func _spawn_cargo(chosen: Array = []) -> void:
 	var r := RandomNumberGenerator.new()
 	r.randomize()
-	var kinds: Array = chosen if not chosen.is_empty() else CargoTypes.load_plan(next_cp, r)
-	var pos: Array = CargoTypes.pack(kinds)
+	if is_bus():
+		passengers = chosen.duplicate() if not chosen.is_empty() else _bus_plan(next_cp, r)
+		cargo_total = passengers.size()
+		truck.set_passengers(passengers.size())
+		jolt = 0.0
+		_prev_v = truck.body.linear_velocity
+		return
+	var kinds: Array = chosen if not chosen.is_empty() else _fit_plan(CargoTypes.load_plan(next_cp, r))
+	var pos: Array = CargoTypes.pack(kinds, truck.bed_left + 2.0, truck.bed_right - 2.0, truck.bed_floor)
 	cargo_total = kinds.size()
 	for i in range(kinds.size()):
 		var c: RigidBody2D = CargoTypes.make(String(kinds[i]), r)
@@ -875,9 +979,44 @@ func _spawn_cargo(chosen: Array = []) -> void:
 		c.body_entered.connect(_on_cargo_hit.bind(c))
 		add_child(c)
 		c.global_position = truck.bed_to_global(pos[i])
-		c.global_rotation = truck.body.global_rotation
-		c.linear_velocity = truck.body.linear_velocity
+		c.global_rotation = truck.bed_rotation()
+		c.linear_velocity = truck.cargo_body.linear_velocity
 		cargo.append(c)
+
+
+## Büyük kasaya daha çok yük: standart listeyi kasa doluncaya kadar tekrarla
+func _fit_plan(plan: Array) -> Array:
+	var out: Array = []
+	for k in plan:
+		var nx: Array = out.duplicate()
+		nx.append(k)
+		if station_fits(nx):
+			out = nx
+	var extra: int = 0
+	while extra < 40 and not plan.is_empty():
+		var nx2: Array = out.duplicate()
+		nx2.append(plan[extra % plan.size()])
+		if not station_fits(nx2):
+			break
+		out = nx2
+		extra += 1
+	var logs: Array = out.filter(func(k): return k == "tomruk")
+	var rest: Array = out.filter(func(k): return k != "tomruk")
+	return logs + rest
+
+
+## Otobüs: duraktan binen yolcular
+func _bus_plan(leg: int, r: RandomNumberGenerator) -> Array:
+	var pool: Array = ["ogrenci", "isci", "turist"]
+	if leg >= 2:
+		pool += ["aile", "yasli"]
+	if leg >= 3:
+		pool += ["isinsani"]
+	var n: int = mini(truck.seat_count(), 6 + leg)
+	var out: Array = []
+	for i in range(n):
+		out.append(pool[r.randi_range(0, pool.size() - 1)])
+	return out
 
 
 ## Kalan yükleri kasaya yeniden diz (reklamla kurtarmada)
@@ -885,10 +1024,10 @@ func _repack_cargo() -> void:
 	var kinds: Array = []
 	for c in cargo:
 		kinds.append(String(c.get_meta("tur", "sandik")))
-	var pos: Array = CargoTypes.pack(kinds)
+	var pos: Array = CargoTypes.pack(kinds, truck.bed_left + 2.0, truck.bed_right - 2.0, truck.bed_floor)
 	for i in range(cargo.size()):
 		var c: RigidBody2D = cargo[i]
-		c.global_transform = Transform2D(truck.body.global_rotation, truck.bed_to_global(pos[i]))
+		c.global_transform = Transform2D(truck.bed_rotation(), truck.bed_to_global(pos[i]))
 		c.linear_velocity = Vector2.ZERO
 		c.angular_velocity = 0.0
 
@@ -901,8 +1040,8 @@ func _on_cargo_hit(_other: Node, c: RigidBody2D) -> void:
 	if now - float(_crash_cd.get(c, -10.0)) < 0.22:
 		return
 	var rel: Vector2 = c.linear_velocity
-	if truck.body != null and cargo.has(c):
-		rel -= truck.body.linear_velocity
+	if truck.cargo_body != null and cargo.has(c):
+		rel -= truck.cargo_body.linear_velocity
 	var spd: float = rel.length()
 	if spd < 150.0:
 		return
@@ -911,6 +1050,9 @@ func _on_cargo_hit(_other: Node, c: RigidBody2D) -> void:
 
 
 func _check_cargo(delta: float) -> void:
+	if is_bus():
+		_check_passengers(delta)
+		return
 	for c in cargo.duplicate():
 		if truck.is_in_bed(c.global_position):
 			_out_time[c] = 0.0
@@ -930,6 +1072,37 @@ func _check_cargo(delta: float) -> void:
 		if d.global_position.x < bx - 2500.0 or d.global_position.y > 6000.0:
 			dropped.erase(d)
 			d.queue_free()
+
+
+## Otobüs: sert iniş, ani fren/çarpma ve aşırı yatma yolcuları sarsar; birikince biri düşer
+func _check_passengers(delta: float) -> void:
+	var v: Vector2 = truck.body.linear_velocity
+	var acc: float = (v - _prev_v).length() / maxf(delta, 0.0001)
+	_prev_v = v
+	_acc_s = lerpf(_acc_s, acc, 0.25)
+	max_acc_seen = maxf(max_acc_seen, _acc_s)
+	var tilt: float = absf(wrapf(truck.body.global_rotation, -PI, PI))
+	var add: float = maxf(_acc_s - JOLT_FREE, 0.0) + maxf(tilt - 0.45, 0.0) * 2600.0
+	jolt = maxf(jolt + (add - 260.0) * delta, 0.0)
+	if jolt < JOLT_LIMIT or passengers.is_empty():
+		return
+	jolt = JOLT_LIMIT * 0.35
+	# kırılgan yolcu (yaşlı, aile) daha kolay düşer
+	var total: float = 0.0
+	for k in passengers:
+		total += float(PASSENGERS[k]["frag"])
+	var pick: float = randf() * total
+	var idx: int = 0
+	for i in range(passengers.size()):
+		pick -= float(PASSENGERS[passengers[i]]["frag"])
+		if pick <= 0.0:
+			idx = i
+			break
+	var who: String = passengers[idx]
+	passengers.remove_at(idx)
+	truck.set_passengers(passengers.size())
+	_toast("%s düştü! Yolcu %d/%d" % [String(PASSENGERS[who]["name"]), passengers.size(), cargo_total], 1.4)
+	snd.sfx("yuk_dustu", 0.0, 1.2)
 
 
 # ======================= TESLİMAT =======================
@@ -955,16 +1128,18 @@ func _check_checkpoint() -> void:
 	# bir daha sayılmaz (ödül tek sefer verilir)
 	var leg: int = next_cp
 	next_cp += 1
-	var intact: int = cargo.size()
+	var intact: int = load_count()
 	var time_bonus: int = clampi(int(maxf(time_left, 0.0) / 2.0), 0, 200)
 	var cargo_value: int = 0
 	for c in cargo:
 		if is_instance_valid(c):
 			cargo_value += clampi(int(c.get_meta("deger", gold_per_cargo)), 0, 400)
+	for pk in passengers:
+		cargo_value += cargo_price(String(pk), leg)
 	var reward: int = cargo_value + station_bonus * leg + time_bonus
 	if intact == cargo_total:
 		reward += perfect_bonus
-	reward = clampi(reward, 0, 4000)   # bir teslimatta olabilecek en yüksek ödül
+	reward = clampi(reward, 0, 8000)   # bir teslimatta olabilecek en yüksek ödül (tır dahil)
 	gold_run += reward
 	delivered += intact
 	truck.refuel()
@@ -976,7 +1151,8 @@ func _check_checkpoint() -> void:
 			c.queue_free()
 	cargo.clear()
 	_out_time.clear()
-	var msg: String = "TESLİMAT %d m!  %d sağlam yük  +%d altın (süre bonusu %d)\nYeni bölge: %s - yollar zorlaşıyor!" % [int(leg * terrain.checkpoint_interval_m), intact, reward, time_bonus, zone_name(next_cp)]
+	var what: String = "yolcu" if is_bus() else "sağlam yük"
+	var msg: String = "%s %d m!  %d %s  +%d altın (süre bonusu %d)\nYeni bölge: %s - yollar zorlaşıyor!" % ["OTOGAR" if is_bus() else "TESLİMAT", int(leg * terrain.checkpoint_interval_m), intact, what, reward, time_bonus, zone_name(next_cp)]
 	if intact == cargo_total:
 		msg = "KUSURSUZ! " + msg
 	_toast(msg, 3.0)
@@ -1001,35 +1177,58 @@ var _station_items: Array = []
 
 ## Bir yükün o bölgede teslim edilince kazandırdığı altın (ileride daha değerli)
 func cargo_price(kind: String, leg: int) -> int:
-	if not CargoTypes.TYPES.has(kind):
+	var base: float = 0.0
+	if CargoTypes.TYPES.has(kind):
+		base = float(CargoTypes.TYPES[kind]["value"])
+	elif PASSENGERS.has(kind):
+		base = float(PASSENGERS[kind]["value"])
+	else:
 		return 0
-	var base: float = float(CargoTypes.TYPES[kind]["value"])
 	return clampi(int(round(base * (1.0 + 0.2 * float(clampi(leg, 1, 40) - 1)))), 1, 400)
 
 
 ## Kasa dolu mu: dizilince en üst sıra kasa duvarını çok aşmasın
 func station_fits(kinds: Array) -> bool:
-	if kinds.size() > STATION_MAX_ITEMS:
+	if is_bus():
+		return kinds.size() <= truck.seat_count()
+	if kinds.size() > station_max_items():
 		return false
-	var pos: Array = CargoTypes.pack(kinds)
+	var pos: Array = CargoTypes.pack(kinds, truck.bed_left + 2.0, truck.bed_right - 2.0, truck.bed_floor)
 	for i in range(kinds.size()):
+		if not CargoTypes.TYPES.has(String(kinds[i])):
+			return false
 		var sz: Vector2 = CargoTypes.TYPES[String(kinds[i])]["size"]
-		if float(pos[i].y) - sz.y * 0.5 < CargoTypes.BED_FLOOR - 72.0:
+		if float(pos[i].y) - sz.y * 0.5 < truck.bed_stack_limit():
 			return false
 	return true
+
+
+## Kasa uzunluğuna göre en fazla yük sayısı (tır dorsesi ~3 kamyon eder)
+func station_max_items() -> int:
+	var w: float = truck.bed_right - truck.bed_left
+	return clampi(int(round(STATION_MAX_ITEMS * w / 132.0)), STATION_MAX_ITEMS, 40)
 
 
 func _station_offer_for(leg: int) -> Array:
 	var r := RandomNumberGenerator.new()
 	r.seed = hash("istasyon:%d:%d" % [terrain.get_seed(), leg])
+	if is_bus():
+		var pp: Array = ["ogrenci", "isci", "turist", "aile", "yasli"]
+		if leg >= 2:
+			pp.append("isinsani")
+		return pp
 	var pool: Array = ["sandik", "cuval", "koli", "balya"]
 	if leg >= 2:
 		pool += ["varil"]
+	if leg >= 2:
+		pool += ["odun"]
 	if leg >= 3:
 		pool += ["tomruk"]
 	if leg >= 4:
 		pool += ["tup"]
 	var offer: Array = ["sandik"]
+	if leg >= 2:
+		offer.append("odun")
 	while offer.size() < mini(5, pool.size()):
 		var k: String = pool[r.randi_range(0, pool.size() - 1)]
 		if not offer.has(k):
@@ -1045,6 +1244,8 @@ func _enter_station() -> void:
 		if is_instance_valid(c):
 			c.queue_free()
 	cargo.clear()
+	passengers.clear()
+	truck.set_passengers(0)
 	_out_time.clear()
 	cargo_total = 0
 	_set_drive_controls(false)
@@ -1061,6 +1262,7 @@ func _enter_station() -> void:
 		load_btn.offset_bottom = -50
 		load_btn.pressed.connect(open_station)
 		ui.add_child(load_btn)
+	load_btn.text = "🧍  YOLCU AL" if is_bus() else "📦  YÜKLE"
 	load_btn.visible = false   # kamyon durunca görünür
 
 
@@ -1127,7 +1329,7 @@ func open_station() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	panel.add_child(v)
-	var t := _label(v, "YÜK SEÇ  •  %s" % zone_name(next_cp), 28)
+	var t := _label(v, "%s  •  %s" % ["YOLCU AL" if is_bus() else "YÜK SEÇ", zone_name(next_cp)], 28)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var grid := GridContainer.new()
 	grid.columns = 5
@@ -1141,7 +1343,8 @@ func open_station() -> void:
 		b.custom_minimum_size = Vector2(200, 84)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_size_override("font_size", 22)
-		b.text = "%s\n+%d altın" % [CargoTypes.TYPES[kind]["name"], cargo_price(kind, next_cp)]
+		var nm: String = String(PASSENGERS[kind]["name"]) if PASSENGERS.has(kind) else String(CargoTypes.TYPES[kind]["name"])
+		b.text = "%s\n+%d altın" % [nm, cargo_price(kind, next_cp)]
 		b.set_meta("tur", kind)
 		_style_btn(b, Color(0.2, 0.42, 0.7))
 		b.pressed.connect(station_add.bind(kind))
@@ -1198,6 +1401,8 @@ func _respawn_station_cargo() -> void:
 		if is_instance_valid(c):
 			c.queue_free()
 	cargo.clear()
+	passengers.clear()
+	truck.set_passengers(0)
 	_out_time.clear()
 	var logs: Array = _station_kinds.filter(func(k): return k == "tomruk")
 	var rest: Array = _station_kinds.filter(func(k): return k != "tomruk")
@@ -1221,7 +1426,7 @@ func _station_refresh() -> void:
 	if n == 0:
 		_station_info.text = "Yüklemek için yüke dokun. Hepsi sağlam giderse +%d bonus!" % perfect_bonus
 	else:
-		_station_info.text = "Kasada %d yük  •  Teslimde: +%d altın  (+istasyon ve süre bonusu)" % [n, station_value()]
+		_station_info.text = "%s %d %s  •  Teslimde: +%d altın  (+istasyon ve süre bonusu)" % ["Otobüste" if is_bus() else "Kasada", n, "yolcu" if is_bus() else "yük", station_value()]
 	var any_fit: bool = false
 	for b in _station_items:
 		var next: Array = _station_kinds.duplicate()
@@ -1229,7 +1434,7 @@ func _station_refresh() -> void:
 		b.disabled = not station_fits(next)
 		any_fit = any_fit or not b.disabled
 	if n > 0 and not any_fit:
-		_station_info.text = "KASA DOLU  •  %d yük  •  Teslimde: +%d altın  (+bonus)" % [n, station_value()]
+		_station_info.text = ("OTOBÜS DOLU" if is_bus() else "KASA DOLU") + "  •  %d yük  •  Teslimde: +%d altın  (+bonus)" % [n, station_value()]
 	_station_go.disabled = n == 0
 
 
@@ -1258,7 +1463,8 @@ func station_autoload() -> void:
 	var r := RandomNumberGenerator.new()
 	r.seed = 7
 	_station_kinds = []
-	for k in CargoTypes.load_plan(next_cp, r):
+	var plan: Array = _bus_plan(next_cp, r) if is_bus() else CargoTypes.load_plan(next_cp, r)
+	for k in plan:
 		var next: Array = _station_kinds.duplicate()
 		next.append(k)
 		if station_fits(next):
@@ -1292,8 +1498,11 @@ func _check_game_over(delta: float) -> void:
 				_end("YAKIT BİTTİ", "Depo boşaldı, kamyon yolda kaldı.")
 			return
 
-	if cargo.is_empty():
-		_end("TÜM YÜKLER DÖKÜLDÜ", "Kasada hiç yük kalmadı (0/%d)." % cargo_total)
+	if load_count() == 0:
+		if is_bus():
+			_end("TÜM YOLCULAR DÜŞTÜ", "Otobüste hiç yolcu kalmadı (0/%d)." % cargo_total)
+		else:
+			_end("TÜM YÜKLER DÖKÜLDÜ", "Kasada hiç yük kalmadı (0/%d)." % cargo_total)
 		return
 
 	# kamyon zeminin altına düştüyse (fizik hatası) oyun bitmez: son sağlam yere geri konur
@@ -1845,8 +2054,11 @@ func _update_hud(delta: float) -> void:
 	fuel_bar.value = truck.fuel / maxf(truck.fuel_capacity, 1.0) * 100.0
 	speed_gauge.set_value(absf(truck.speed_kmh()), delta)
 	heat_gauge.set_value(truck.heat, delta)
-	cargo_lbl.text = "YÜK %d/%d" % [cargo.size(), cargo_total]
-	cargo_lbl.add_theme_color_override("font_color", Color.WHITE if cargo.size() > 2 else Color(1, 0.45, 0.35))
+	if is_bus():
+		cargo_lbl.text = "YOLCU %d/%d  ~%d%%" % [passengers.size(), cargo_total, int(clampf(jolt / JOLT_LIMIT, 0.0, 1.0) * 100.0)]
+	else:
+		cargo_lbl.text = "YÜK %d/%d" % [cargo.size(), cargo_total]
+	cargo_lbl.add_theme_color_override("font_color", Color.WHITE if load_count() > 2 else Color(1, 0.45, 0.35))
 	dist_lbl.text = "%d m" % int(_distance_m())
 	gold_lbl.text = "ALTIN %d" % gold_run
 	var to_next: float = (terrain.checkpoint_x(next_cp) - truck.body.global_position.x) / PX_PER_M
@@ -2111,6 +2323,7 @@ func select_truck(id: String) -> void:
 		return
 	selected = id
 	_save()
+	_apply_world()   # tır/otobüs gibi uzun araçlarda yol daha düzgün üretilir
 	_build_truck()
 	if menu:
 		menu.refresh()
@@ -2246,6 +2459,7 @@ func _build_background() -> void:
 	_modulate = CanvasModulate.new()
 	add_child(_modulate)
 	_build_sky_objects(sky_layer)
+	_build_space_objects(sky_layer)
 
 
 ## ---------------- GÜNDÜZ / GECE DÖNGÜSÜ ----------------
@@ -2335,11 +2549,122 @@ func _sky_at(t: float) -> Array:
 
 ## Gece ne kadar koyu: 0 gündüz .. 1 tam gece
 func night_amount() -> float:
+	if _sky_mode != "":
+		return 0.8
 	var w: Color = _sky_at(day_t)[2]
 	return clampf((1.0 - w.r) / 0.58, 0.0, 1.0)
 
 
+var _sky_mode: String = ""
+var _earth: Node2D
+var _planet: Node2D
+var _nebula: Node2D
+
+
+## Ay ve Uzay haritalarında gece-gündüz yok: siyah gök, yıldızlar, Dünya / gezegenler
+func _set_sky_mode(m: String) -> void:
+	_sky_mode = m
+	if _sky_grad == null:
+		return
+	var space: bool = m != ""
+	if _cloud_layer:
+		_cloud_layer.visible = not space
+	for mt in _mountains:
+		if mt is Polygon2D:
+			(mt as Polygon2D).visible = m != "uzay"
+	if _earth:
+		_earth.visible = m == "ay"
+	if _planet:
+		_planet.visible = m == "uzay"
+	if _nebula:
+		_nebula.visible = m == "uzay"
+	_sky_acc = 1.0
+	_update_sky(0.0)
+
+
+func _build_space_objects(sky_layer: CanvasLayer) -> void:
+	# Dünya (Ay haritasında gökte)
+	_earth = Node2D.new()
+	_earth.visible = false
+	sky_layer.add_child(_earth)
+	_earth.add_child(_disc(120.0, Color(0.4, 0.6, 1.0, 0.14)))
+	_earth.add_child(_disc(78.0, Color(0.16, 0.42, 0.85)))
+	for c in [[Vector2(-24, -18), 26.0], [Vector2(18, 10), 20.0], [Vector2(-6, 34), 14.0], [Vector2(36, -30), 10.0]]:
+		var land := _disc(float(c[1]), Color(0.25, 0.62, 0.3))
+		land.position = c[0]
+		_earth.add_child(land)
+	var cl := _disc(70.0, Color(1, 1, 1, 0.12))
+	cl.position = Vector2(10, -6)
+	_earth.add_child(cl)
+	# halkalı gezegen + bulutsu (Uzay haritası)
+	_nebula = Node2D.new()
+	_nebula.visible = false
+	sky_layer.add_child(_nebula)
+	var nr := RandomNumberGenerator.new()
+	nr.seed = 99
+	for i in range(14):
+		var blob := _disc(nr.randf_range(120.0, 260.0), [Color(0.6, 0.2, 0.8, 0.07), Color(0.2, 0.5, 0.9, 0.07), Color(0.9, 0.3, 0.6, 0.06)][i % 3])
+		blob.position = Vector2(nr.randf_range(0, 2400), nr.randf_range(0, 800))
+		_nebula.add_child(blob)
+	_planet = Node2D.new()
+	_planet.visible = false
+	sky_layer.add_child(_planet)
+	var ring_back := Line2D.new()
+	var rp := PackedVector2Array()
+	for i in range(33):
+		var a: float = PI + PI * float(i) / 32.0
+		rp.append(Vector2(cos(a) * 150.0, sin(a) * 30.0))
+	ring_back.points = rp
+	ring_back.width = 10.0
+	ring_back.default_color = Color(0.95, 0.8, 0.55, 0.7)
+	_planet.add_child(ring_back)
+	_planet.add_child(_disc(80.0, Color(0.92, 0.55, 0.3)))
+	var band := _disc(80.0, Color(0.8, 0.4, 0.22, 0.6))
+	band.scale = Vector2(1.0, 0.3)
+	_planet.add_child(band)
+	var ring_front := Line2D.new()
+	var rf := PackedVector2Array()
+	for i in range(33):
+		var a2: float = PI * float(i) / 32.0
+		rf.append(Vector2(cos(a2) * 150.0, sin(a2) * 30.0))
+	ring_front.points = rf
+	ring_front.width = 10.0
+	ring_front.default_color = Color(0.95, 0.8, 0.55, 0.85)
+	_planet.add_child(ring_front)
+
+
+func _update_space_sky() -> void:
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var top: Color = Color(0.0, 0.0, 0.02) if _sky_mode == "ay" else Color(0.03, 0.0, 0.08)
+	var bot: Color = Color(0.05, 0.06, 0.12) if _sky_mode == "ay" else Color(0.16, 0.05, 0.28)
+	_sky_grad.set_color(0, top)
+	_sky_grad.set_color(1, bot)
+	RenderingServer.set_default_clear_color(bot)
+	_modulate.color = Color(0.95, 0.96, 1.0) if _sky_mode == "ay" else Color(0.92, 0.88, 1.0)
+	for m in _mountains:
+		m.modulate = Color(0.55, 0.56, 0.6) if _sky_mode == "ay" else Color(0.5, 0.4, 0.7)
+	_stars.modulate.a = 1.0
+	_sun.visible = false
+	_moon.visible = false
+	if _earth:
+		_earth.position = Vector2(vp.x * 0.78, vp.y * 0.2)
+	if _planet:
+		_planet.position = Vector2(vp.x * 0.75, vp.y * 0.24)
+	if truck.body != null:
+		var far: Node = truck.body.get_node_or_null("Far")
+		if far is CanvasItem:
+			(far as CanvasItem).modulate = Color(1, 1, 1, 0.9)
+
+
 func _update_sky(delta: float) -> void:
+	if _sky_mode != "":
+		if _cloud_layer:
+			_cloud_layer.motion_offset.x -= delta * 14.0
+		_sky_acc += delta
+		if _sky_acc >= 0.1:
+			_sky_acc = 0.0
+			_update_space_sky()
+		return
 	day_t = fmod(day_t + delta / DAY_LENGTH, 1.0)
 	if _cloud_layer:
 		_cloud_layer.motion_offset.x -= delta * 14.0   # rüzgâr
@@ -2424,6 +2749,15 @@ func _load() -> void:
 			if ids.has(String(o)) and not owned.has(String(o)):
 				owned.append(String(o))
 	dev_mode = bool(cf.get_value("ayar", "gelistirici", false))
+	map_id = String(cf.get_value("oyun", "harita", "koy"))
+	maps_owned = ["koy", "sehir", "otobus"]
+	var rawm = cf.get_value("oyun", "haritalar", [])
+	if rawm is Array:
+		for m in rawm:
+			if TerrainGen.MAPS.has(String(m)) and not maps_owned.has(String(m)):
+				maps_owned.append(String(m))
+	if not TerrainGen.MAPS.has(map_id) or (not maps_owned.has(map_id) and not dev_mode):
+		map_id = "koy"
 	selected = String(cf.get_value("oyun", "secili", "tosun"))
 	if not ids.has(selected) or (not owned.has(selected) and not dev_mode):
 		selected = "tosun"
@@ -2456,6 +2790,8 @@ func _save() -> void:
 	cf.set_value("ayar", "gelistirici", dev_mode)
 	cf.set_value("oyun", "sahip", owned)
 	cf.set_value("oyun", "secili", selected)
+	cf.set_value("oyun", "harita", map_id)
+	cf.set_value("oyun", "haritalar", maps_owned)
 	for k in up_levels:
 		cf.set_value("garaj", String(k), int(up_levels[k]))
 	cf.set_value("yolculuk", "durum", _saved_run)

@@ -4,6 +4,9 @@ extends RefCounted
 ## cab: classic / rounded / cabover / hood / offroad
 ## drive: "rwd" = arkadan itiş (standart kamyon), "awd" = 4x4 (sadece en pahalı kamyon)
 ## extras: stack, stacks2, stripe, spoiler, lightbar, bullbar, snorkel, visor
+## kind: truck (kasalı) / tir (çekici + dorse) / bus (otobüs; sadece Otobüs Hattı haritasında)
+## ext: kasanın arkaya uzaması (px) = daha çok yük; axles: aks konumları; zoom: kamera
+## Pahalı araç = daha uzun kasa / dorse = daha çok yük = daha çok altın
 
 static func all() -> Array:
 	return [
@@ -37,7 +40,32 @@ static func all() -> Array:
 			"body": Color.html("#1d2129"), "accent": Color.html("#d4af4f"), "bed": Color.html("#2a2e37"), "rim": Color.html("#e6e8ec"),
 			"power": 2.1, "grip": 1.35, "fuel": 1.9, "stiff": 1.25, "damp": 1.4, "speed": 1.3, "mass": 1.3,
 			"tread": "road", "drive": "awd", "extras": ["stacks2", "stripe", "visor"]},
+		{"id": "kirkayak", "name": "Kırkayak 6x4", "desc": "Üç akslı uzun kasa. Arkadaki iki aks çeker, yükün iki katını alır.",
+			"price": 6500, "cab": "cabover", "wheel_r": 29.0, "ext": 56.0, "axles": [-152.0, -86.0, 78.0], "zoom": 0.86,
+			"body": Color.html("#1f8a8a"), "accent": Color.html("#f4f4f4"), "bed": Color.html("#3d4450"), "rim": Color.html("#e9edf2"),
+			"power": 2.35, "grip": 1.25, "fuel": 2.0, "stiff": 1.45, "damp": 1.5, "speed": 1.15, "mass": 1.45,
+			"tread": "road", "drive": "rwd", "extras": ["stack", "stripe", "spoiler"]},
+		{"id": "mamut", "name": "Mamut 6x6", "desc": "Altı teker birden çeker. Dev kasa, dev tekerler, durdurulamaz.",
+			"price": 9000, "cab": "offroad", "wheel_r": 34.0, "ext": 70.0, "axles": [-168.0, -92.0, 80.0], "zoom": 0.82,
+			"body": Color.html("#8a1e1e"), "accent": Color.html("#1a1a1a"), "bed": Color.html("#4a3b2a"), "rim": Color.html("#ffcf3a"),
+			"power": 2.9, "grip": 1.55, "fuel": 2.3, "stiff": 1.6, "damp": 1.7, "speed": 1.1, "mass": 1.6,
+			"tread": "offroad", "drive": "6x6", "extras": ["lightbar", "bullbar", "snorkel", "stacks2"]},
+		{"id": "tir", "name": "Kral TIR", "desc": "Dorseli çekici: kasası üç kamyon eder. Uzun ve ağır, düzgün yolları sever.",
+			"price": 14000, "kind": "tir", "cab": "cabover", "wheel_r": 28.0, "axles": [-52.0, 78.0], "trailer_len": 440.0, "trailer_mass": 0.85, "zoom": 0.66,
+			"body": Color.html("#f4f6f9"), "accent": Color.html("#1e5fb4"), "bed": Color.html("#59606c"), "rim": Color.html("#dfe3e8"),
+			"power": 3.6, "grip": 1.3, "fuel": 3.0, "stiff": 1.5, "damp": 1.6, "speed": 1.3, "mass": 1.7,
+			"tread": "road", "drive": "rwd", "smooth": 0.55, "extras": ["stacks2", "stripe", "visor"]},
+		{"id": "otobus", "name": "Şehirlerarası Otobüs", "desc": "Yolcuları sarsmadan, düşürmeden götür.", "hidden": true,
+			"price": 0, "kind": "bus", "cab": "cabover", "wheel_r": 28.0, "ext": 60.0, "axles": [-158.0, 86.0], "zoom": 0.78,
+			"body": Color.html("#f2f2f2"), "accent": Color.html("#d6262b"), "bed": Color.html("#444a55"), "rim": Color.html("#d9dde3"),
+			"power": 2.4, "grip": 1.2, "fuel": 2.2, "stiff": 1.35, "damp": 1.8, "speed": 1.2, "mass": 1.5,
+			"tread": "road", "drive": "rwd", "smooth": 0.7, "extras": []},
 	]
+
+
+## Mağazada satılan araçlar (otobüs sadece Otobüs Hattı'nda kullanılır)
+static func shop() -> Array:
+	return all().filter(func(t): return not bool(t.get("hidden", false)))
 
 
 static func by_id(id: String) -> Dictionary:

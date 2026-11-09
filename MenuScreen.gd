@@ -4,6 +4,7 @@ extends Control
 ## Ekonomi işlemlerini CargoAndGameManager yapar; burası sadece arayüz.
 
 const TruckCatalog = preload("res://TruckCatalog.gd")
+const TerrainGen = preload("res://TerrainGenerator.gd")
 const TruckArt = preload("res://TruckArt.gd")
 
 var manager: Node            # CargoAndGameManager
@@ -17,6 +18,7 @@ var _tab_btns: Dictionary = {}
 var _panel: PanelContainer
 var _buttons: HBoxContainer
 var _continue: Button
+var _map_btn: Button
 var _logo_taps: int = 0
 var _logo_tap_t: float = 0.0
 
@@ -61,6 +63,7 @@ func _ready() -> void:
 	_buttons.add_theme_constant_override("separation", 22)
 	add_child(_buttons)
 	_big_btn("BAŞLA  ▶", Color(0.15, 0.68, 0.3), func() -> void: manager.start_new_game())
+	_map_btn = _big_btn("HARİTA", Color(0.5, 0.3, 0.8), func() -> void: open_panel("maps"))
 	_big_btn("MAĞAZA", Color(0.1, 0.55, 0.75), func() -> void: open_panel("trucks"))
 	_big_btn("GELİŞTİRME", Color(0.85, 0.52, 0.1), func() -> void: open_panel("upgrades"))
 	# kaldığı yerden devam (kayıtlı yolculuk varsa)
@@ -125,7 +128,7 @@ func _ready() -> void:
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 8)
 	v.add_child(tabs)
-	for t in [["trucks", "KAMYONLAR"], ["shop", "JETON"], ["upgrades", "GELİŞTİRME"]]:
+	for t in [["maps", "HARİTA"], ["trucks", "ARAÇLAR"], ["shop", "JETON"], ["upgrades", "GELİŞTİR"]]:
 		var b := Button.new()
 		b.text = t[1]
 		b.custom_minimum_size = Vector2(0, 54)
@@ -150,14 +153,15 @@ func _ready() -> void:
 	_scroll.add_child(_content)
 
 
-func _big_btn(text: String, col: Color, cb: Callable) -> void:
+func _big_btn(text: String, col: Color, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(330, 120)
-	b.add_theme_font_size_override("font_size", 40)
+	b.custom_minimum_size = Vector2(262, 120)
+	b.add_theme_font_size_override("font_size", 34)
 	manager._style_btn(b, col)
 	b.pressed.connect(cb)
 	_buttons.add_child(b)
+	return b
 
 
 func open_panel(which: String) -> void:
@@ -259,7 +263,11 @@ func refresh() -> void:
 		manager._style_btn(b, Color(0.95, 0.55, 0.12) if id == tab else Color(0.2, 0.23, 0.3))
 	for c in _content.get_children():
 		c.queue_free()
+	if _map_btn:
+		_map_btn.text = "HARİTA\n%s" % String(TerrainGen.MAPS[manager.map_id]["name"])
 	match tab:
+		"maps":
+			_build_maps()
 		"trucks":
 			_build_trucks()
 		"upgrades":
@@ -270,7 +278,7 @@ func refresh() -> void:
 
 # ---------------- KAMYONLAR ----------------
 func _build_trucks() -> void:
-	for d in TruckCatalog.all():
+	for d in TruckCatalog.shop():
 		var id: String = d["id"]
 		var own: bool = manager.owned.has(id)
 		var sel: bool = manager.selected == id
@@ -299,11 +307,18 @@ func _build_trucks() -> void:
 		var ds := _lbl(info, String(d["desc"]), 15, Color(0.75, 0.8, 0.88))
 		ds.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		ds.custom_minimum_size = Vector2(200, 0)
-		_lbl(info, "Çekiş: 4x4" if String(d.get("drive", "rwd")) == "awd" else "Çekiş: arkadan itiş", 14, Color(1.0, 0.8, 0.4))
-		_stat(info, "Güç", float(d["power"]) / 2.1)
+		var drv: String = String(d.get("drive", "rwd"))
+		var drive_txt: String = {"awd": "Çekiş: 4x4", "6x6": "Çekiş: 6x6 (altı teker)"}.get(drv, "Çekiş: arkadan itiş")
+		if String(d.get("kind", "truck")) == "tir":
+			drive_txt = "Dorseli çekici, arkadan itiş"
+		elif (d.get("axles", []) as Array).size() == 3 and drv == "rwd":
+			drive_txt = "Çekiş: 6x4 (iki arka aks)"
+		_lbl(info, drive_txt, 14, Color(1.0, 0.8, 0.4))
+		_stat(info, "Güç", float(d["power"]) / 3.6)
 		_stat(info, "Tutuş", float(d["grip"]) / 1.55)
-		_stat(info, "Süspansiyon", (float(d["stiff"]) + float(d["damp"])) / 2.0 / 1.4)
-		_stat(info, "Yakıt", float(d["fuel"]) / 1.9)
+		_stat(info, "Süspansiyon", (float(d["stiff"]) + float(d["damp"])) / 2.0 / 1.65)
+		_stat(info, "Yakıt", float(d["fuel"]) / 3.0)
+		_stat(info, "Kasa", capacity_of(d) / 466.0)
 
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(150, 64)
@@ -349,10 +364,71 @@ func _stat(parent: Control, title: String, v: float) -> void:
 	h.add_child(pb)
 
 
+## Kasa iç uzunluğu (px): kamyonda 132 + uzama, tırda dorse
+static func capacity_of(d: Dictionary) -> float:
+	if String(d.get("kind", "truck")) == "tir":
+		return float(d.get("trailer_len", 420.0)) + 6.0
+	return 132.0 + float(d.get("ext", 0.0))
+
+
+# ---------------- HARİTALAR ----------------
+func _build_maps() -> void:
+	_lbl(_content, "Bölüm seç: her haritanın kendi yolu, gökyüzü ve yer çekimi var.", 18, Color(0.8, 0.85, 0.92))
+	for id in TerrainGen.MAPS:
+		var md: Dictionary = TerrainGen.MAPS[id]
+		var mid: String = id
+		var own: bool = manager.maps_owned.has(mid)
+		var sel: bool = manager.map_id == mid
+		var card := _card(Color(0.95, 0.55, 0.12) if sel else Color(0, 0, 0, 0))
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 12)
+		card.add_child(h)
+		var sw := ColorRect.new()
+		sw.custom_minimum_size = Vector2(110, 90)
+		sw.color = {"koy": Color(0.4, 0.7, 0.3), "sehir": Color(0.3, 0.32, 0.36), "otobus": Color(0.85, 0.2, 0.2), "ay": Color(0.72, 0.72, 0.75), "uzay": Color(0.35, 0.15, 0.6)}.get(mid, Color.GRAY)
+		sw.mouse_filter = Control.MOUSE_FILTER_PASS
+		h.add_child(sw)
+		var ic := _lbl(sw, {"koy": "🌲", "sehir": "🏙", "otobus": "🚌", "ay": "🌕", "uzay": "🪐"}.get(mid, ""), 48, Color.WHITE)
+		ic.position = Vector2(26, 14)
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.mouse_filter = Control.MOUSE_FILTER_PASS
+		h.add_child(info)
+		_lbl(info, String(md["name"]), 26, Color.WHITE)
+		var ds := _lbl(info, String(md["desc"]), 15, Color(0.75, 0.8, 0.88))
+		ds.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		ds.custom_minimum_size = Vector2(240, 0)
+		var g: float = float(md["gravity"])
+		var extra: String = "Yer çekimi: %%%d" % int(g * 100.0)
+		if md.has("vehicle"):
+			extra += "  •  Araç: otobüs"
+		_lbl(info, extra, 14, Color(1.0, 0.8, 0.4))
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(150, 64)
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		b.add_theme_font_size_override("font_size", 20)
+		if sel:
+			b.text = "SEÇİLİ"
+			b.disabled = true
+			manager._style_btn(b, Color(0.95, 0.55, 0.12))
+		elif own or manager.dev_mode:
+			b.text = "SEÇ"
+			manager._style_btn(b, Color(0.2, 0.45, 0.8))
+			b.pressed.connect(func() -> void: manager.select_map(mid))
+		else:
+			var price: int = manager.map_price(mid)
+			b.text = "AÇ\n%d jeton" % price
+			manager._style_btn(b, Color(0.1, 0.55, 0.7) if manager.tokens >= price else Color(0.3, 0.32, 0.38))
+			b.pressed.connect(func() -> void: manager.buy_map(mid))
+		h.add_child(b)
+
+
 # ---------------- GELİŞTİRME ----------------
 func _build_upgrades() -> void:
 	var d: Dictionary = TruckCatalog.by_id(manager.selected)
 	_lbl(_content, "Kamyon: %s" % d["name"], 26, Color.WHITE)
+	if manager.active_vehicle() != manager.selected:
+		_lbl(_content, "(Otobüs Hattı'nda otobüs sürülür; geliştirmeler seçili kamyona uygulanır)", 15, Color(1.0, 0.8, 0.4))
 	var lv: Dictionary = manager.levels_of(manager.selected)
 	for up in manager.UPGRADES:
 		var uid: String = up["id"]

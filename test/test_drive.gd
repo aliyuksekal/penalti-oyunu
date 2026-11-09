@@ -32,6 +32,12 @@ func _ready() -> void:
 	elif cs == "controls":
 		await _controls()
 		get_tree().quit()
+	elif cs == "maps":
+		await _maps()
+		get_tree().quit()
+	elif cs == "bus":
+		await _bus()
+		get_tree().quit()
 	elif cs == "touch":
 		# dokunmatik GAZ pedalı: pedalın ortasına parmak bas, 6 sn tut
 		main.start_game()
@@ -82,16 +88,7 @@ func _wait(s: float) -> void:
 
 ## Kamyonu tekerleriyle birlikte ters çevir (gerçek devrilme gibi, teker toprağa gömülmeden)
 func _flip_truck(tr) -> void:
-	var p: Vector2 = tr.body.global_position + Vector2(0, -170)
-	tr.body.global_transform = Transform2D(PI, p)
-	tr.body.linear_velocity = Vector2.ZERO
-	tr.body.angular_velocity = 0.0
-	for i in range(tr.wheels.size()):
-		var side: float = -1.0 if i == 0 else 1.0
-		var w: RigidBody2D = tr.wheels[i]
-		w.global_transform = Transform2D(0.0, p + Vector2(-tr.WHEEL_X * side, -tr.wheel_y))
-		w.linear_velocity = Vector2.ZERO
-		w.angular_velocity = 0.0
+	tr.place_at(tr.body.global_position + Vector2(0, -170), PI)
 
 
 func _shot(name: String) -> void:
@@ -445,10 +442,118 @@ func _alltrucks() -> void:
 			var rot: float = main.truck.body.global_rotation
 			_key(rot > -0.7)
 		_key(false)
-		print("SONUÇ: %s  %d m  yük=%d/5  bitti=%s %s" % [id, int(main._distance_m()), main.cargo.size(), str(main.game_over), main.end_reason])
-		if main.game_over:
+		var m: int = int(main._distance_m())
+		_check(m > 60 or main.game_over, "%s ilerledi: %d m" % [id, m])
+		_check(main.truck.rigid_parts().size() == main.truck.wheels.size() + main.truck.trailer_wheels.size() + (2 if main.truck.trailer != null else 1), "%s parçaları tamam" % id)
+		if main.truck.trailer != null:
+			var pin_w: Vector2 = main.truck.body.to_global(main.truck.KINGPIN)
+			_check(pin_w.distance_to(main.truck.trailer.global_position) < 30.0, "dorse çekiciye bağlı (%.0f px)" % pin_w.distance_to(main.truck.trailer.global_position))
+			_check(main.cargo_total >= 12, "tır dorsesi çok yük alıyor: %d" % main.cargo_total)
+		if id == "mamut" or id == "kirkayak":
+			_check(main.truck.wheels.size() == 3 and main.cargo_total > 6, "%s: 3 aks, %d yük" % [id, main.cargo_total])
+		print("SONUÇ: %s  %d m  yük=%d/%d  bitti=%s %s" % [id, m, main.load_count(), main.cargo_total, str(main.game_over), main.end_reason])
+		if main.game_over and main.end_reason != "TÜM YÜKLER DÖKÜLDÜ" and main.end_reason != "TÜM YOLCULAR DÜŞTÜ":
 			return
+		if main.game_over:
+			get_tree().paused = false
+			main.game_over = false
 		main.open_menu()
+
+
+## Her harita: doğru yol türleri, yer çekimi, gökyüzü; birkaç saniye sürüş
+func _maps() -> void:
+	main.dev_mode = true
+	for id in main.TerrainGen.MAPS:
+		main.select_map(id)
+		await _wait(0.3)
+		var md: Dictionary = main.TerrainGen.MAPS[id]
+		var g: float = float(PhysicsServer2D.area_get_param(main.get_world_2d().space, PhysicsServer2D.AREA_PARAM_GRAVITY))
+		_check(absf(g - 980.0 * float(md["gravity"])) < 1.0, "%s: yer çekimi %.0f" % [id, g])
+		var roads: Array = md["roads"]
+		var ok_roads: bool = true
+		for ri in range(0, 30):
+			var rk: String = main.terrain.road_at_index(ri)
+			if not roads.is_empty() and not roads.has(rk):
+				ok_roads = false
+		_check(ok_roads, "%s: yollar haritaya ait" % id)
+		var finite: bool = true
+		for xi in range(0, 2000):
+			if not is_finite(main.terrain.height_at(float(xi) * 61.0)):
+				finite = false
+		_check(finite, "%s: arazi sonlu" % id)
+		_check(main.truck.kind == ("bus" if id == "otobus" else "truck"), "%s: araç %s" % [id, main.truck.kind])
+		main.start_game()
+		_key(true)
+		var tt := 0.0
+		while tt < 8.0 and not main.game_over:
+			await get_tree().physics_frame
+			tt += 1.0 / 60.0
+			_key(main.truck.body.global_rotation > -0.7)
+		_key(false)
+		_check(main._distance_m() > 25.0, "%s: sürüldü %d m, yük %d/%d" % [id, int(main._distance_m()), main.load_count(), main.cargo_total])
+		if main.game_over:
+			get_tree().paused = false
+			main.game_over = false
+		main.open_menu()
+	main.select_map("koy")
+	print("SONUÇ: haritalar bitti")
+
+
+## Otobüs: yolcular biner, sakin sürüşte pek düşmez, sert düşüşte düşer, teslimde ücret
+func _bus() -> void:
+	main.dev_mode = true
+	main.select_map("otobus")
+	await _wait(0.3)
+	main.start_game()
+	await _wait(0.5)
+	var n0: int = main.passengers.size()
+	_check(main.truck.kind == "bus" and n0 >= 6 and n0 <= main.truck.seat_count(), "otobüse %d yolcu bindi (%d koltuk)" % [n0, main.truck.seat_count()])
+	_key(true)
+	var tt := 0.0
+	while tt < 14.0 and not main.game_over:
+		await get_tree().physics_frame
+		tt += 1.0 / 60.0
+		_key(main.truck.body.global_rotation > -0.5)
+	_key(false)
+	print("  ok  (bilgi) sakin sürüş: %d m, en yüksek ivme %.0f, yolcu %d/%d" % [int(main._distance_m()), main.max_acc_seen, main.passengers.size(), n0])
+	_check(main.passengers.size() >= n0 - 1, "normal sürüşte yolcular yerinde (%d/%d)" % [main.passengers.size(), n0])
+	await _wait(1.0)
+	var n1: int = main.passengers.size()
+	var p: Vector2 = main.truck.body.global_position + Vector2(0, -520)
+	main.truck.place_at(p, 0.0)
+	await _wait(3.0)
+	print("  ok  (bilgi) sert düşüş: en yüksek ivme %.0f, yolcu %d -> %d" % [main.max_acc_seen, n1, main.passengers.size()])
+	_check(main.passengers.size() < n1, "sert düşüşte yolcu düştü (%d -> %d)" % [n1, main.passengers.size()])
+	# otogara kadar ışınla: ücret = yolcu ücretleri + bonus
+	var g0: int = main.gold_run
+	var left: int = main.passengers.size()
+	var fares: int = 0
+	for k in main.passengers:
+		fares += main.cargo_price(String(k), main.next_cp)
+	main.time_left = 100.0
+	var cx: float = main.terrain.checkpoint_x(main.next_cp)
+	main.terrain.update_around(cx - 200.0)
+	main._rebuild_truck_at(cx - 200.0)
+	await _wait(0.5)
+	_key(true)
+	var dw := 0.0
+	var cp0: int = main.next_cp
+	while main.next_cp == cp0 and dw < 10.0 and not main.game_over:
+		await get_tree().physics_frame
+		dw += 1.0 / 60.0
+	_key(false)
+	_check(main.next_cp == cp0 + 1 and main.gold_run - g0 >= fares, "otogarda ücret alındı: +%d (yolcu ücreti %d, %d yolcu)" % [main.gold_run - g0, fares, left])
+	_check(main.at_station and main.load_btn.text.contains("YOLCU"), "otogarda 'YOLCU AL' tuşu")
+	main.open_station()
+	await get_tree().process_frame
+	for q in range(30):
+		main.station_add("ogrenci")
+	_check(main._station_kinds.size() == main.truck.seat_count(), "koltuk sayısı kadar yolcu alındı (%d)" % main._station_kinds.size())
+	main.leave_station()
+	await _wait(0.3)
+	_check(main.passengers.size() == main.truck.seat_count(), "yolcular otobüste")
+	main.select_map("koy")
+	print("SONUÇ: otobüs bitti")
 
 func _shots() -> void:
 	# açılış animasyonu kareleri
@@ -531,6 +636,33 @@ func _shots() -> void:
 	await _wait(0.8)
 	await _shot("g_station.png")
 	main.station_autoload()
+	# yeni haritalar ve büyük araçlar
+	main.dev_mode = true
+	main.day_t = 0.2
+	for pair in [["sehir", "tir"], ["otobus", "tosun"], ["ay", "mamut"], ["uzay", "kirkayak"], ["koy", "mamut"]]:
+		main.open_menu()
+		main.selected = String(pair[1])
+		main.select_map(String(pair[0]))
+		await _wait(0.4)
+		main.start_game()
+		_key(true)
+		await _wait(3.5)
+		_key(false)
+		await _wait(0.4)
+		await _shot("map_%s_%s.png" % [pair[0], pair[1]])
+	main.selected = "tosun"
+	main.select_map("koy")
+	main.open_menu()
+	main.menu.open_panel("maps")
+	await _wait(0.5)
+	await _shot("m_maps.png")
+	main.menu.open_panel("trucks")
+	await _wait(0.3)
+	main.menu._scroll.scroll_vertical = 2000
+	await _wait(0.4)
+	await _shot("m_trucks_big.png")
+	main.menu.close_panel()
+	main.dev_mode = false
 	main.open_menu()
 	main.day_t = 0.75   # gece: ay ve yıldızlar
 	main._sky_acc = 1.0

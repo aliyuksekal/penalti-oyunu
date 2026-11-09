@@ -56,7 +56,65 @@ const ROADS := {
 	"orman": {"name": "ORMAN PATİKASI", "friction": 0.9, "bumps": 1.7, "amp": 1.0, "feat": 1.0, "surface": Color(0.27, 0.4, 0.2), "under": Color(0.2, 0.15, 0.1)},
 	"camur": {"name": "ÇAMURLU YOL", "friction": 0.5, "bumps": 0.8, "amp": 0.9, "feat": 0.9, "surface": Color(0.33, 0.24, 0.16), "under": Color(0.22, 0.15, 0.1)},
 	"kar": {"name": "KARLI YOL", "friction": 0.33, "bumps": 0.7, "amp": 1.1, "feat": 1.0, "surface": Color(0.95, 0.97, 1.0), "under": Color(0.75, 0.82, 0.9)},
+	# Şehirlerarası / Otobüs Hattı
+	"otoyol": {"name": "OTOYOL", "friction": 1.2, "bumps": 0.05, "amp": 0.6, "feat": 0.5, "surface": Color(0.2, 0.21, 0.24), "under": Color(0.13, 0.13, 0.15)},
+	"sehir": {"name": "ŞEHİR İÇİ", "friction": 1.15, "bumps": 0.1, "amp": 0.35, "feat": 0.3, "surface": Color(0.3, 0.3, 0.33), "under": Color(0.2, 0.2, 0.22)},
+	# Ay
+	"regolit": {"name": "AY TOZU", "friction": 0.8, "bumps": 0.7, "amp": 1.0, "feat": 1.0, "surface": Color(0.74, 0.74, 0.76), "under": Color(0.5, 0.5, 0.53)},
+	"krater": {"name": "KRATER ALANI", "friction": 0.75, "bumps": 1.3, "amp": 1.2, "feat": 1.25, "surface": Color(0.6, 0.6, 0.63), "under": Color(0.4, 0.4, 0.43)},
+	# Uzay
+	"uzay": {"name": "IŞIK YOLU", "friction": 1.05, "bumps": 0.2, "amp": 1.0, "feat": 1.0, "surface": Color(0.3, 0.95, 1.0), "under": Color(0.3, 0.1, 0.5)},
+	"meteor": {"name": "METEOR KUŞAĞI", "friction": 0.95, "bumps": 1.1, "amp": 1.15, "feat": 1.2, "surface": Color(0.95, 0.4, 1.0), "under": Color(0.25, 0.08, 0.4)},
 }
+
+## ---------------- HARİTALAR (bölümler) ----------------
+## Menüden seçilir. Her haritanın kendi yolları, renkleri, yer çekimi ve gökyüzü var.
+const MAPS := {
+	"koy": {"name": "Köy Yolları", "desc": "Asfalt, toprak, dağ, orman, çamur, kar. Klasik yük taşıma.",
+		"roads": [], "amp": 1.0, "bumps": 1.0, "feat": 1.0, "feats": [], "gravity": 1.0, "sky": "",
+		"station": "TESLİMAT", "price": 0, "tint": true},
+	"sehir": {"name": "Şehirlerarası", "desc": "Otoyol ve şehir yolları: düzgün ve hızlı. Tırlar için ideal.",
+		"roads": ["otoyol", "asfalt", "sehir"], "amp": 0.55, "bumps": 0.35, "feat": 0.4, "feats": ["none", "steep", "valley", "bumps"],
+		"gravity": 1.0, "sky": "", "station": "TESLİMAT", "price": 0, "tint": true},
+	"otobus": {"name": "Otobüs Hattı", "desc": "Şehirlerarası otobüsle yolcu taşı. Sarsarsan yolcu düşer!",
+		"roads": ["otoyol", "sehir", "asfalt"], "amp": 0.6, "bumps": 0.4, "feat": 0.45, "feats": ["none", "steep", "valley", "bumps"],
+		"gravity": 1.0, "sky": "", "station": "OTOGAR", "price": 0, "tint": true, "vehicle": "otobus"},
+	"ay": {"name": "Ay Yolu", "desc": "Az yer çekimi, kraterler ve uçuşlar. Yükler havada süzülür!",
+		"roads": ["regolit", "krater"], "amp": 1.05, "bumps": 0.8, "feat": 1.0, "feats": ["none", "valley", "ramp", "bumps", "rocky"],
+		"gravity": 0.38, "sky": "ay", "station": "AY ÜSSÜ", "price": 300, "tint": false},
+	"uzay": {"name": "Uzay Yolu", "desc": "Yıldızların arasında ışık yolu. Rampalar, meteorlar, düşük yer çekimi.",
+		"roads": ["uzay", "meteor"], "amp": 1.2, "bumps": 0.9, "feat": 1.2, "feats": ["none", "ramp", "steep", "valley", "bumps"],
+		"gravity": 0.55, "sky": "uzay", "station": "UZAY İSTASYONU", "price": 600, "tint": false},
+}
+const MAP_ZONES := {
+	"sehir": [
+		[Color(0.42, 0.72, 0.3), Color(0.45, 0.33, 0.21), Color(0.33, 0.24, 0.15)],
+		[Color(0.58, 0.68, 0.28), Color(0.5, 0.37, 0.23), Color(0.36, 0.26, 0.16)],
+		[Color(0.3, 0.6, 0.28), Color(0.42, 0.32, 0.22), Color(0.3, 0.22, 0.15)],
+	],
+	"ay": [
+		[Color(0.82, 0.82, 0.84), Color(0.55, 0.55, 0.58), Color(0.36, 0.36, 0.39)],
+		[Color(0.76, 0.75, 0.72), Color(0.5, 0.49, 0.47), Color(0.33, 0.32, 0.31)],
+		[Color(0.7, 0.71, 0.75), Color(0.44, 0.45, 0.49), Color(0.28, 0.29, 0.33)],
+	],
+	"uzay": [
+		[Color(0.3, 0.95, 1.0), Color(0.2, 0.08, 0.35), Color(0.1, 0.04, 0.2)],
+		[Color(0.95, 0.4, 1.0), Color(0.22, 0.06, 0.32), Color(0.1, 0.03, 0.18)],
+		[Color(0.5, 1.0, 0.6), Color(0.08, 0.14, 0.3), Color(0.04, 0.06, 0.16)],
+	],
+}
+var map_id: String = "koy"
+var smooth_k: float = 1.0   # tır/otobüs gibi uzun araçlarda yollar daha düzgün (0.5..1)
+
+
+func map_def() -> Dictionary:
+	return MAPS.get(map_id, MAPS["koy"])
+
+
+## Haritayı ve araca göre yol düzgünlüğünü ayarla (sonra reseed çağrılmalı)
+func configure(id: String, smooth: float) -> void:
+	map_id = id if MAPS.has(id) else "koy"
+	smooth_k = clampf(smooth, 0.4, 1.0)
 var _roads: Dictionary = {}     # yol kesimi no -> tür
 var _road_mats: Dictionary = {}
 
@@ -65,6 +123,20 @@ func road_at_index(idx: int) -> String:
 	if _roads.has(idx):
 		return _roads[idx]
 	var kind: String = "asfalt"
+	var mroads: Array = map_def()["roads"]
+	if not mroads.is_empty():
+		kind = String(mroads[0])
+		if idx >= 2:
+			var mr := RandomNumberGenerator.new()
+			mr.seed = hash("yol:%d:%d:%s" % [_seed, idx, map_id])
+			var prv: String = road_at_index(idx - 1)
+			var opts: Array = mroads.filter(func(k): return k != prv)
+			if opts.is_empty() or mr.randf() < 0.35:
+				kind = prv
+			else:
+				kind = String(opts[mr.randi_range(0, opts.size() - 1)])
+		_roads[idx] = kind
+		return kind
 	if idx < 2:
 		kind = "asfalt"            # ilk 500 m asfalt: rahat başlangıç
 	elif idx < 4:
@@ -171,11 +243,12 @@ func difficulty_at(x: float) -> float:
 
 func _raw_height(x: float) -> float:
 	var d: float = difficulty_at(x)
-	var amp: float = lerpf(55.0, 320.0, d) * road_factor(x, "amp")   # tepe yüksekliği artar
-	var stretch: float = lerpf(1.0, 1.6, d)       # tepeler sıklaşır = daha dik
+	var md: Dictionary = map_def()
+	var amp: float = lerpf(55.0, 320.0, d) * road_factor(x, "amp") * float(md["amp"]) * smooth_k   # tepe yüksekliği artar
+	var stretch: float = lerpf(1.0, 1.6, d) * lerpf(0.75, 1.0, smooth_k)   # tepeler sıklaşır = daha dik
 	var big: float = _noise.get_noise_1d(x * stretch)
-	var bumps: float = _detail.get_noise_1d(x) * lerpf(3.0, 28.0, d) * road_factor(x, "bumps")  # engebe artar
-	return base_y - big * amp + bumps + _feature_offset(x) * road_factor(x, "feat")
+	var bumps: float = _detail.get_noise_1d(x) * lerpf(3.0, 28.0, d) * road_factor(x, "bumps") * float(md["bumps"]) * smooth_k  # engebe artar
+	return base_y - big * amp + bumps + _feature_offset(x) * road_factor(x, "feat") * float(md["feat"]) * smooth_k
 
 
 ## Kesim kesim yol karakteri: mesafe arttıkça zor kesimler hem sıklaşır hem büyür
@@ -186,10 +259,15 @@ func feature_at(idx: int) -> Dictionary:
 	var f := {"kind": "none", "center": (float(idx) + 0.5) * L, "half": 0.0, "h": 0.0}
 	if float(idx) * L >= features_start_m * PX_PER_M:
 		var r := RandomNumberGenerator.new()
-		r.seed = hash("%d:%d" % [_seed, idx])
+		r.seed = hash("%d:%d:%s" % [_seed, idx, map_id])
 		var d: float = difficulty_at(f["center"])
 		var kinds: Array = ["none", "bumps", "steep", "ramp", "rocky", "valley"]
 		var weights: Array = [lerpf(3.0, 0.25, d), 1.0, 0.5 + d * 2.3, 0.25 + d * 1.5, 0.15 + d * 1.9, 0.45 + d * 1.4]
+		var allowed: Array = map_def()["feats"]
+		if not allowed.is_empty():
+			for wi in range(kinds.size()):
+				if not allowed.has(kinds[wi]):
+					weights[wi] = 0.0
 		var total: float = 0.0
 		for w in weights:
 			total += float(w)
@@ -298,13 +376,17 @@ func update_around(x: float) -> void:
 
 ## x noktasındaki bölge renkleri (istasyonlarda yumuşak geçiş)
 func zone_colors_at(x: float) -> Array:
+	var zones: Array = MAP_ZONES.get(map_id, ZONE_COLORS) if map_id != "otobus" else MAP_ZONES["sehir"]
 	var cp: float = checkpoint_px()
 	var z: float = x / cp
-	var zi: int = clampi(floori(z), 0, ZONE_COLORS.size() - 1)
-	var zn: int = clampi(zi + 1, 0, ZONE_COLORS.size() - 1)
+	var zi: int = clampi(floori(z), 0, zones.size() - 1)
+	var zn: int = clampi(zi + 1, 0, zones.size() - 1)
+	if map_id != "koy":   # özel haritalarda renkler döngüsel
+		zi = posmod(floori(z), zones.size())
+		zn = posmod(zi + 1, zones.size())
 	var f: float = smoothstep(0.92, 1.0, z - float(floori(z))) if x > 0.0 else 0.0
-	var a: Array = ZONE_COLORS[zi]
-	var b: Array = ZONE_COLORS[zn]
+	var a: Array = zones[zi]
+	var b: Array = zones[zn]
 	return [(a[0] as Color).lerp(b[0], f), (a[1] as Color).lerp(b[1], f), (a[2] as Color).lerp(b[2], f)]
 
 
@@ -375,7 +457,7 @@ func _build_chunk(i: int) -> Node2D:
 			var zc: Array = zone_colors_at(p.x)
 			var base: Color = zc[int(L[1])]
 			var tint: Color = L[3]
-			if tint.a > 0.0:
+			if tint.a > 0.0 and bool(map_def()["tint"]):
 				base = base.lerp(Color(tint.r, tint.g, tint.b), 0.45)
 			vcs.append(base.darkened(float(L[2])))
 		layer.vertex_colors = vcs
@@ -443,7 +525,7 @@ func _build_chunk(i: int) -> Node2D:
 	while tx < x0 + chunk_width:
 		tx += tr.randf_range(30.0, 90.0)
 		var rkt: String = road_at(tx)
-		if rkt == "asfalt" or rkt == "kar" or rkt == "camur":
+		if not ["toprak", "dag", "orman"].has(rkt):
 			continue
 		var ty: float = height_at(tx)
 		var gc: Color = zone_colors_at(tx)[0] if rkt != "orman" else Color(0.22, 0.45, 0.18)
@@ -538,7 +620,49 @@ func _build_station(root: Node2D, k: int, cx: float) -> void:
 	flag.polygon = PackedVector2Array([Vector2(3, -258), Vector2(95, -232), Vector2(3, -206)])
 	flag.color = Color(0.1, 0.75, 0.35)
 	st.add_child(flag)
-	_add_label(st, "TESLİMAT\n%d m" % int(k * checkpoint_interval_m), Vector2(-110, -380), 30)
+	if map_id == "otobus":
+		_build_bus_stop(st)
+	elif map_id == "ay" or map_id == "uzay":
+		wall.color = Color(0.82, 0.84, 0.88) if map_id == "ay" else Color(0.25, 0.2, 0.45)
+		roof.color = Color(0.55, 0.6, 0.7) if map_id == "ay" else Color(0.3, 0.9, 1.0)
+		flag.color = Color(0.2, 0.5, 1.0) if map_id == "ay" else Color(1.0, 0.4, 0.95)
+	_add_label(st, "%s\n%d m" % [String(map_def()["station"]), int(k * checkpoint_interval_m)], Vector2(-110, -380), 30)
+
+
+## Otogar: durak sundurması ve bekleyen yolcular
+func _build_bus_stop(st: Node2D) -> void:
+	var shelter := Polygon2D.new()
+	shelter.polygon = PackedVector2Array([Vector2(-330, -3), Vector2(-330, -150), Vector2(-160, -165), Vector2(-160, -3)])
+	shelter.color = Color(0.55, 0.75, 0.9, 0.35)
+	st.add_child(shelter)
+	var top := Line2D.new()
+	top.points = PackedVector2Array([Vector2(-340, -150), Vector2(-150, -168)])
+	top.width = 8.0
+	top.default_color = Color(0.85, 0.15, 0.15)
+	st.add_child(top)
+	var r := RandomNumberGenerator.new()
+	r.seed = hash(st.name)
+	for i in range(5):
+		var px: float = -310.0 + float(i) * 34.0
+		var person := Node2D.new()
+		person.position = Vector2(px, -3)
+		st.add_child(person)
+		var shirt := Polygon2D.new()
+		shirt.polygon = PackedVector2Array([Vector2(-8, -18), Vector2(8, -18), Vector2(9, -44), Vector2(-9, -44)])
+		shirt.color = [Color(0.85, 0.2, 0.2), Color(0.2, 0.45, 0.85), Color(0.25, 0.65, 0.35), Color(0.85, 0.65, 0.15)][r.randi_range(0, 3)]
+		person.add_child(shirt)
+		var legs := Polygon2D.new()
+		legs.polygon = PackedVector2Array([Vector2(-7, 0), Vector2(7, 0), Vector2(7, -18), Vector2(-7, -18)])
+		legs.color = Color(0.2, 0.22, 0.3)
+		person.add_child(legs)
+		var head := Polygon2D.new()
+		var hp := PackedVector2Array()
+		for q in range(12):
+			var a: float = TAU * float(q) / 12.0
+			hp.append(Vector2(cos(a), sin(a)) * 7.0 + Vector2(0, -52))
+		head.polygon = hp
+		head.color = [Color(0.95, 0.78, 0.62), Color(0.78, 0.56, 0.4), Color(0.6, 0.42, 0.3)][i % 3]
+		person.add_child(head)
 
 
 ## Yol türüne göre süslemeler: asfalt şerit + bariyer, orman çam ağaçları, dağ kayaları,
@@ -637,7 +761,124 @@ func _build_road_decor(root: Node2D, x0: float, top: PackedVector2Array, ci: int
 					drift.position = p0 + Vector2(0, 3)
 					drift.color = Color(1, 1, 1)
 					root.add_child(drift)
+			"otoyol", "sehir":
+				if k % 3 == 0 and k + 1 < top.size():
+					var dash2 := Line2D.new()
+					dash2.points = PackedVector2Array([top[k] + Vector2(0, 3), top[k + 1] + Vector2(-8, 3)])
+					dash2.width = 3.0
+					dash2.default_color = Color(0.98, 0.98, 0.98) if rk == "otoyol" else Color(0.98, 0.82, 0.2)
+					root.add_child(dash2)
+				if rk == "otoyol" and k % 2 == 0 and k + 2 < top.size():
+					var rail2 := Line2D.new()
+					rail2.points = PackedVector2Array([p0 + Vector2(0, -20), top[k + 2] + Vector2(0, -20)])
+					rail2.width = 6.0
+					rail2.default_color = Color(0.8, 0.82, 0.86)
+					rail2.z_index = -1
+					root.add_child(rail2)
+					var post2 := Line2D.new()
+					post2.points = PackedVector2Array([p0 + Vector2(0, 2), p0 + Vector2(0, -24)])
+					post2.width = 4.0
+					post2.default_color = Color(0.5, 0.52, 0.56)
+					post2.z_index = -1
+					root.add_child(post2)
+				if k % 14 == 0:
+					_build_lamp(root, p0)
+				if rk == "sehir" and k % 5 == 0:
+					_build_building(root, p0, r)
+			"regolit", "krater":
+				if r.randf() < (0.1 if rk == "regolit" else 0.22):
+					_build_crater(root, p0, r)
+			"uzay", "meteor":
+				if k % 6 == 0:
+					var beacon := Line2D.new()
+					beacon.points = PackedVector2Array([p0 + Vector2(0, 2), p0 + Vector2(0, -30)])
+					beacon.width = 3.0
+					beacon.default_color = Color(0.6, 0.6, 0.75)
+					beacon.z_index = -1
+					root.add_child(beacon)
+					var glow := Polygon2D.new()
+					var gpts := PackedVector2Array()
+					for q in range(10):
+						var a4: float = TAU * float(q) / 10.0
+						gpts.append(Vector2(cos(a4), sin(a4)) * 6.0)
+					glow.polygon = gpts
+					glow.position = p0 + Vector2(0, -32)
+					glow.color = road_color(p0.x, "surface")
+					glow.z_index = -1
+					root.add_child(glow)
+				if rk == "meteor" and r.randf() < 0.12:
+					_build_rock(root, p0 + Vector2(0, 4), r)
+				if r.randf() < 0.05:
+					_build_crystal(root, p0, r)
 		k += 1
+
+
+func _build_lamp(root: Node2D, p: Vector2) -> void:
+	var lamp := Node2D.new()
+	lamp.position = p
+	lamp.z_index = -2
+	root.add_child(lamp)
+	var pole := Line2D.new()
+	pole.points = PackedVector2Array([Vector2(0, 2), Vector2(0, -150), Vector2(26, -158)])
+	pole.width = 5.0
+	pole.default_color = Color(0.45, 0.47, 0.52)
+	lamp.add_child(pole)
+	var head := Polygon2D.new()
+	head.polygon = PackedVector2Array([Vector2(18, -162), Vector2(40, -162), Vector2(36, -154), Vector2(20, -154)])
+	head.color = Color(1.0, 0.92, 0.6)
+	lamp.add_child(head)
+
+
+func _build_building(root: Node2D, p: Vector2, r: RandomNumberGenerator) -> void:
+	var b := Node2D.new()
+	b.position = p + Vector2(0, 30)
+	b.z_index = -3
+	root.add_child(b)
+	var w: float = r.randf_range(70.0, 130.0)
+	var h: float = r.randf_range(140.0, 330.0)
+	var col: Color = [Color(0.62, 0.6, 0.58), Color(0.72, 0.55, 0.45), Color(0.5, 0.56, 0.64), Color(0.8, 0.76, 0.66)][r.randi_range(0, 3)]
+	var wall := Polygon2D.new()
+	wall.polygon = PackedVector2Array([Vector2(-w * 0.5, 0), Vector2(-w * 0.5, -h), Vector2(w * 0.5, -h), Vector2(w * 0.5, 0)])
+	wall.color = col.darkened(0.15)
+	b.add_child(wall)
+	var yy: float = -h + 16.0
+	while yy < -46.0:
+		var xx: float = -w * 0.5 + 10.0
+		while xx + 14.0 < w * 0.5 - 6.0:
+			var win := Polygon2D.new()
+			win.polygon = PackedVector2Array([Vector2(xx, yy), Vector2(xx + 14, yy), Vector2(xx + 14, yy + 18), Vector2(xx, yy + 18)])
+			win.color = Color(1.0, 0.88, 0.5) if r.randf() < 0.35 else Color(0.35, 0.45, 0.58)
+			b.add_child(win)
+			xx += 22.0
+		yy += 30.0
+
+
+func _build_crater(root: Node2D, p: Vector2, r: RandomNumberGenerator) -> void:
+	var cw: float = r.randf_range(24.0, 60.0)
+	var rim := Polygon2D.new()
+	var pts := PackedVector2Array()
+	for q in range(14):
+		var a: float = TAU * float(q) / 14.0
+		pts.append(Vector2(cos(a) * cw, sin(a) * cw * 0.18))
+	rim.polygon = pts
+	rim.position = p + Vector2(0, 4)
+	rim.color = Color(0.42, 0.42, 0.45, 0.9)
+	root.add_child(rim)
+	var lip := Line2D.new()
+	lip.points = PackedVector2Array([p + Vector2(-cw, 3), p + Vector2(-cw * 0.4, 0), p + Vector2(cw * 0.4, 0), p + Vector2(cw, 3)])
+	lip.width = 2.0
+	lip.default_color = Color(0.9, 0.9, 0.92, 0.7)
+	root.add_child(lip)
+
+
+func _build_crystal(root: Node2D, p: Vector2, r: RandomNumberGenerator) -> void:
+	var c := Polygon2D.new()
+	var h: float = r.randf_range(26.0, 60.0)
+	c.polygon = PackedVector2Array([Vector2(-8, 0), Vector2(0, -h), Vector2(8, 0), Vector2(0, 6)])
+	c.position = p + Vector2(r.randf_range(-6, 6), 2)
+	c.color = Color(0.55, 0.95, 1.0, 0.85) if r.randf() < 0.5 else Color(1.0, 0.5, 0.95, 0.85)
+	c.z_index = -2
+	root.add_child(c)
 
 
 func _build_pine(root: Node2D, p: Vector2, r: RandomNumberGenerator) -> void:

@@ -74,6 +74,18 @@ var engine_enabled: bool = true
 var menu_view: bool = false       # menüde kamera
 var menu_panel_open: bool = false # menüde sağ panel açıksa kamyon sola kayar
 
+## Araç geometrisi (modelden gelir): kasa sınırları kasayı taşıyan gövdenin yerel koordinatında
+var kind: String = "truck"          # truck / tir / bus
+var bed_left: float = BED_LEFT
+var bed_right: float = BED_RIGHT
+var bed_floor: float = BED_FLOOR
+var bed_wall_top: float = BED_WALL_TOP
+var cargo_body: RigidBody2D         # yükün durduğu gövde (kamyonda gövde, tırda dorse)
+var trailer: RigidBody2D
+var trailer_wheels: Array[RigidBody2D] = []
+var _rest: Dictionary = {}          # parça -> gövdeye göre duruş (yeniden yerleştirmek için)
+const KINGPIN := Vector2(-46, -16)  # tır: dorsenin bağlandığı beşinci teker (çekici yerel)
+
 var fuel: float = 100.0
 var heat: float = 0.0
 var overheated: bool = false
@@ -110,6 +122,8 @@ func apply_model(def: Dictionary, levels: Dictionary) -> void:
 	fuel_capacity = _base["fuel_capacity"] * float(def["fuel"]) * (1.0 + UPGRADE_STEP["fuel"] * _lv(levels, "fuel"))
 	max_wheel_speed = _base["max_wheel_speed"] * float(def["speed"]) / r_k
 	body_mass = _base["body_mass"] * float(def["mass"])
+	kind = String(def.get("kind", "truck"))
+	base_zoom = 1.35 * float(def.get("zoom", 1.0))
 
 
 func _lv(levels: Dictionary, id: String) -> float:
@@ -145,15 +159,30 @@ func build(spawn: Vector2) -> void:
 	add_child(body)
 	_parts.append(body)
 
-	var chassis := PackedVector2Array([Vector2(-118, -10), Vector2(112, -10), Vector2(118, 2), Vector2(112, 14), Vector2(-118, 14)])
-	# Üstü açık U kasa (tek, içbükey poligon: Godot dışbükey parçalara ayırır)
-	var bed := PackedVector2Array([
-		Vector2(-118, BED_WALL_TOP), Vector2(BED_LEFT, BED_WALL_TOP), Vector2(BED_LEFT, BED_FLOOR),
-		Vector2(BED_RIGHT, BED_FLOOR), Vector2(BED_RIGHT, BED_WALL_TOP), Vector2(BED_RIGHT + 10, BED_WALL_TOP),
-		Vector2(BED_RIGHT + 10, -10), Vector2(-118, -10)])
-	_add_collision(body, chassis)
-	_add_collision(body, TruckArt.cab_polygon(String(model["cab"])))
-	_add_collision(body, bed)
+	var ext: float = float(model.get("ext", 0.0))
+	var rear: float = -118.0 - ext
+	cargo_body = body
+	match kind:
+		"tir":
+			# çekici: kısa şasi + kabin, kasa yok (yük dorsede)
+			_add_collision(body, PackedVector2Array([Vector2(-96, -10), Vector2(112, -10), Vector2(118, 2), Vector2(112, 14), Vector2(-96, 14)]))
+			_add_collision(body, TruckArt.cab_polygon(String(model["cab"])))
+		"bus":
+			_add_collision(body, TruckArt.bus_polygon(ext))
+		_:
+			bed_left = BED_LEFT - ext
+			bed_right = BED_RIGHT
+			bed_floor = BED_FLOOR
+			bed_wall_top = BED_WALL_TOP
+			var chassis := PackedVector2Array([Vector2(rear, -10), Vector2(112, -10), Vector2(118, 2), Vector2(112, 14), Vector2(rear, 14)])
+			# Üstü açık U kasa (tek, içbükey poligon: Godot dışbükey parçalara ayırır)
+			var bed := PackedVector2Array([
+				Vector2(rear, bed_wall_top), Vector2(bed_left, bed_wall_top), Vector2(bed_left, bed_floor),
+				Vector2(bed_right, bed_floor), Vector2(bed_right, bed_wall_top), Vector2(bed_right + 10, bed_wall_top),
+				Vector2(bed_right + 10, -10), Vector2(rear, -10)])
+			_add_collision(body, chassis)
+			_add_collision(body, TruckArt.cab_polygon(String(model["cab"])))
+			_add_collision(body, bed)
 	TruckArt.paint_body(body, model, wheel_r, wheel_y)
 
 	smoke = CPUParticles2D.new()
@@ -162,7 +191,8 @@ func build(spawn: Vector2) -> void:
 		smoke.position = Vector2(36, TruckArt._roof_y(String(model["cab"])) - 24.0)   # dikey egzoz bacası
 		smoke.direction = Vector2(-0.4, -1)
 	else:
-		smoke.position = Vector2(-122, 6)   # arkadaki egzoz borusu
+		var tail: float = -152.0 if kind == "bus" else (-100.0 if kind == "tir" else -122.0)
+		smoke.position = Vector2(tail - float(model.get("ext", 0.0)) * (0.0 if kind == "tir" else 1.0), 6)   # arkadaki egzoz borusu
 		smoke.direction = Vector2(-1, -0.35)
 	smoke.amount = 26
 	smoke.lifetime = 1.3
@@ -220,34 +250,22 @@ func build(spawn: Vector2) -> void:
 
 	# ---------------- tekerlekler + süspansiyon ----------------
 	wheels.clear()
-	var cargo_share: float = 5.0 * 0.4
-	for side in [-1.0, 1.0]:
-		var wpos: Vector2 = origin + Vector2(WHEEL_X * side, wheel_y)
+	trailer_wheels.clear()
+	var axles: Array = axle_list(model)
+	var cargo_share: float = 5.0 * 0.4 * (0.4 if kind == "tir" else 1.0)
+	for ax in axles:
+		var wpos: Vector2 = origin + Vector2(float(ax), wheel_y)
 		var w := _make_wheel(wpos)
 		wheels.append(w)
+		_suspend(body, w, wpos, (body_mass + cargo_share) * _gravity() / float(axles.size()))
 
-		# dikey ray: tekerlek sadece gövdeye göre yukarı/aşağı hareket eder
-		var groove := GrooveJoint2D.new()
-		groove.position = wpos - Vector2(0, UP_TRAVEL)
-		groove.length = UP_TRAVEL + DOWN_TRAVEL
-		groove.initial_offset = UP_TRAVEL
-		add_child(groove)
-		_parts.append(groove)
-		groove.node_a = groove.get_path_to(body)
-		groove.node_b = groove.get_path_to(w)
+	if kind == "tir":
+		_build_trailer(origin)
 
-		# yay + amortisör: gövdedeki üst noktadan tekerlek merkezine
-		var spring := DampedSpringJoint2D.new()
-		spring.position = wpos - Vector2(0, SPRING_TOP)
-		spring.length = SPRING_TOP
-		var load_n: float = (body_mass + cargo_share) * _gravity() * 0.5
-		spring.rest_length = SPRING_TOP + clampf(load_n / maxf(suspension_stiffness, 1.0), 0.0, 60.0)
-		spring.stiffness = suspension_stiffness
-		spring.damping = clampf(suspension_damping, 0.01, 16.0)
-		add_child(spring)
-		_parts.append(spring)
-		spring.node_a = spring.get_path_to(body)
-		spring.node_b = spring.get_path_to(w)
+	_rest.clear()
+	var inv: Transform2D = body.transform.affine_inverse()
+	for part in rigid_parts():
+		_rest[part] = inv * (part as RigidBody2D).transform
 
 	# ---------------- kamera ----------------
 	camera = Camera2D.new()
@@ -260,6 +278,110 @@ func build(spawn: Vector2) -> void:
 	camera.make_current()
 
 
+## Aks konumları (arka -> ön). wheels[0] en arka teker.
+static func axle_list(def: Dictionary) -> Array:
+	var a: Array = def.get("axles", [-WHEEL_X, WHEEL_X])
+	var out: Array = a.duplicate()
+	out.sort()
+	return out
+
+
+## Aracın yere değen noktaları (gövde merkezine göre x) - güvenli yerleştirme için
+static func footprint(def: Dictionary) -> Array:
+	var xs: Array = axle_list(def)
+	if String(def.get("kind", "truck")) == "tir":
+		var L: float = float(def.get("trailer_len", 420.0))
+		for tx in trailer_axles(def):
+			xs.append(KINGPIN.x + float(tx))
+		xs.append(KINGPIN.x - L)
+	return xs
+
+
+static func trailer_axles(def: Dictionary) -> Array:
+	var L: float = float(def.get("trailer_len", 420.0))
+	return [-L + 66.0, -L + 128.0]
+
+
+## Bir tekeri gövdeye dikey ray + yay/amortisörle bağla
+func _suspend(frame: RigidBody2D, w: RigidBody2D, wpos: Vector2, load_n: float) -> void:
+	var groove := GrooveJoint2D.new()
+	groove.position = wpos - Vector2(0, UP_TRAVEL)
+	groove.length = UP_TRAVEL + DOWN_TRAVEL
+	groove.initial_offset = UP_TRAVEL
+	add_child(groove)
+	_parts.append(groove)
+	groove.node_a = groove.get_path_to(frame)
+	groove.node_b = groove.get_path_to(w)
+	var spring := DampedSpringJoint2D.new()
+	spring.position = wpos - Vector2(0, SPRING_TOP)
+	spring.length = SPRING_TOP
+	spring.rest_length = SPRING_TOP + clampf(load_n / maxf(suspension_stiffness, 1.0), 0.0, 60.0)
+	spring.stiffness = suspension_stiffness
+	spring.damping = clampf(suspension_damping, 0.01, 16.0)
+	add_child(spring)
+	_parts.append(spring)
+	spring.node_a = spring.get_path_to(frame)
+	spring.node_b = spring.get_path_to(w)
+
+
+## Tır dorsesi: uzun düz platform, önde yüksek alın, arkada kapak; beşinci tekere mafsallı
+func _build_trailer(origin: Vector2) -> void:
+	var L: float = float(model.get("trailer_len", 420.0))
+	trailer = RigidBody2D.new()
+	trailer.name = "Dorse"
+	trailer.mass = body_mass * float(model.get("trailer_mass", 0.8))
+	trailer.position = origin + KINGPIN
+	trailer.collision_layer = 2
+	trailer.collision_mask = 1 | 4
+	trailer.continuous_cd = RigidBody2D.CCD_MODE_CAST_SHAPE
+	trailer.can_sleep = false
+	trailer.center_of_mass_mode = RigidBody2D.CENTER_OF_MASS_MODE_CUSTOM
+	trailer.center_of_mass = Vector2(-L * 0.5, 4)
+	var tm := PhysicsMaterial.new()
+	tm.friction = 0.6
+	trailer.physics_material_override = tm
+	add_child(trailer)
+	_parts.append(trailer)
+	cargo_body = trailer
+	bed_left = -L + 10.0
+	bed_right = 16.0
+	bed_floor = -14.0
+	bed_wall_top = -64.0
+	# döşeme + alın + arka kapak (yükler dorsenin içinde kalsın)
+	_add_collision(trailer, PackedVector2Array([Vector2(-L, -14), Vector2(28, -14), Vector2(28, 6), Vector2(-L, 6)]))
+	_add_collision(trailer, PackedVector2Array([Vector2(bed_right, -96), Vector2(28, -96), Vector2(28, -14), Vector2(bed_right, -14)]))
+	_add_collision(trailer, PackedVector2Array([Vector2(-L, bed_wall_top), Vector2(bed_left, bed_wall_top), Vector2(bed_left, -14), Vector2(-L, -14)]))
+	TruckArt.paint_trailer(trailer, model, L, wheel_r, wheel_y - KINGPIN.y)
+	var ty: float = wheel_y - KINGPIN.y
+	for tx in trailer_axles(model):
+		var wpos: Vector2 = trailer.position + Vector2(float(tx), ty)
+		var w := _make_wheel(wpos)
+		trailer_wheels.append(w)
+		_suspend(trailer, w, wpos, (trailer.mass + 2.0) * _gravity() * 0.5)
+	var pin := PinJoint2D.new()
+	pin.position = trailer.position
+	pin.softness = 0.0
+	pin.angular_limit_enabled = true
+	pin.angular_limit_lower = -0.55
+	pin.angular_limit_upper = 0.55
+	add_child(pin)
+	_parts.append(pin)
+	pin.node_a = pin.get_path_to(body)
+	pin.node_b = pin.get_path_to(trailer)
+
+
+## Fiziğe katılan bütün gövdeler (çekici, tekerler, dorse, dorse tekerleri)
+func rigid_parts() -> Array:
+	var out: Array = []
+	if body != null:
+		out.append(body)
+	out.append_array(wheels)
+	if trailer != null:
+		out.append(trailer)
+		out.append_array(trailer_wheels)
+	return out
+
+
 ## Kamyonu tamamen kaldır (garajda kamyon değiştirirken)
 func teardown() -> void:
 	for p in _parts:
@@ -267,6 +389,10 @@ func teardown() -> void:
 			p.queue_free()
 	_parts.clear()
 	wheels.clear()
+	trailer_wheels.clear()
+	trailer = null
+	cargo_body = null
+	_rest.clear()
 	body = null
 	camera = null
 	smoke = null
@@ -342,6 +468,10 @@ func _physics_process(delta: float) -> void:
 	var damp: float = 2.5 if fuel <= 0.0 else 0.0
 	for w2 in wheels:
 		w2.angular_damp = damp
+	# dorse tekerleri boşta döner; frende onlar da yavaşlar
+	for tw in trailer_wheels:
+		if brake_pressed and not reversing:
+			tw.angular_velocity = move_toward(tw.angular_velocity, 0.0, brake_decel * delta)
 	_update_engine(delta, throttle)
 	_update_camera(delta)
 
@@ -367,12 +497,18 @@ func _update_engine(delta: float, throttle: float) -> void:
 	_update_smoke(throttle)
 
 
-## Çekiş: wheels[0] arka teker, wheels[1] ön teker.
-## Arkadan itiş = bütün güç arka tekere; 4x4 = güç iki tekere bölünür.
+## Çekiş: wheels[0] en arka teker, son eleman ön teker.
+## Arkadan itiş = güç ön teker hariç tüm tekerlere; 4x4 / 6x6 = güç bütün tekerlere bölünür.
 func _drive_share(i: int) -> float:
-	if String(model.get("drive", "rwd")) == "awd":
+	var n: int = wheels.size()
+	var drive: String = String(model.get("drive", "rwd"))
+	if n <= 1:
+		return 1.0
+	if drive == "awd" and n == 2:
 		return 0.55 if i == 0 else 0.45
-	return 1.0 if i == 0 else 0.0
+	if drive == "awd" or drive == "6x6":
+		return 1.0 / float(n)
+	return 1.0 / float(n - 1) if i < n - 1 else 0.0
 
 
 ## Turbo: anlık itiş (ani hız kazanımı) + birkaç saniye ek güç; motoru ısıtır
@@ -456,31 +592,71 @@ func refuel() -> void:
 
 ## Reklamla kurtarma: kamyonu verilen noktada dik ve durmuş halde yeniden yerleştir
 func upright_at(p: Vector2) -> void:
-	body.global_transform = Transform2D(0.0, p)
-	body.linear_velocity = Vector2.ZERO
-	body.angular_velocity = 0.0
-	for i in range(wheels.size()):
-		var side: float = -1.0 if i == 0 else 1.0
-		var w: RigidBody2D = wheels[i]
-		w.global_transform = Transform2D(0.0, p + Vector2(WHEEL_X * side, wheel_y))
-		w.linear_velocity = Vector2.ZERO
-		w.angular_velocity = 0.0
+	place_at(p, 0.0)
+
+
+## Bütün parçaları (dorse dahil) kurulduğu duruşla p noktasına, rot açısıyla koy
+func place_at(p: Vector2, rot: float) -> void:
+	var base := Transform2D(rot, p)
+	for part in rigid_parts():
+		var rb: RigidBody2D = part
+		var rest: Transform2D = _rest.get(rb, Transform2D.IDENTITY)
+		rb.global_transform = base * rest
+		rb.linear_velocity = Vector2.ZERO
+		rb.angular_velocity = 0.0
 
 
 ## Kasanın içindeki bir noktanın dünya konumu (yük yerleştirmek için)
 func bed_to_global(local: Vector2) -> Vector2:
-	return body.to_global(local)
+	return (cargo_body if cargo_body != null else body).to_global(local)
+
+
+func bed_rotation() -> float:
+	return (cargo_body if cargo_body != null else body).global_rotation
 
 
 ## Bir nokta hâlâ kasanın içinde mi? (biraz pay bırakılmış)
 func is_in_bed(world_pos: Vector2) -> bool:
-	var p: Vector2 = body.to_local(world_pos)
-	return p.x > BED_LEFT - 16.0 and p.x < BED_RIGHT + 16.0 and p.y < BED_FLOOR + 14.0 and p.y > BED_WALL_TOP - 160.0
+	var cb: RigidBody2D = cargo_body if cargo_body != null else body
+	var p: Vector2 = cb.to_local(world_pos)
+	return p.x > bed_left - 16.0 and p.x < bed_right + 16.0 and p.y < bed_floor + 14.0 and p.y > bed_wall_top - 160.0
+
+
+## Kasaya sığan en yüksek yük yığını (kasa duvarını çok aşmasın)
+func bed_stack_limit() -> float:
+	return bed_floor - 72.0 * float(model.get("stack_k", 1.0))
+
+
+func has_bed() -> bool:
+	return kind != "bus"
+
+
+## Otobüs: camlarda görünen yolcu sayısı
+func set_passengers(n: int) -> void:
+	if body == null:
+		return
+	var heads: Node = body.get_node_or_null("Yolcular")
+	if heads == null:
+		return
+	var i: int = 0
+	for h in heads.get_children():
+		(h as Node2D).visible = i < n
+		i += 1
+
+
+func seat_count() -> int:
+	if body == null:
+		return 0
+	var heads: Node = body.get_node_or_null("Yolcular")
+	return heads.get_child_count() if heads != null else 0
 
 
 # ---------------- yardımcılar ----------------
 func _gravity() -> float:
-	return float(ProjectSettings.get_setting("physics/2d/default_gravity", 980.0))
+	var g: float = float(ProjectSettings.get_setting("physics/2d/default_gravity", 980.0))
+	if is_inside_tree():
+		g = float(PhysicsServer2D.area_get_param(get_world_2d().space, PhysicsServer2D.AREA_PARAM_GRAVITY))
+	return g
 
 
 func _add_collision(parent: Node, pts: PackedVector2Array) -> void:
