@@ -559,9 +559,13 @@ func _bus() -> void:
 	print("  ok  (bilgi) sert düşüş: yolcu %d -> %d, yolda yatan %d" % [n1, main.cargo.size(), main.dropped.size()])
 	_check(main.cargo.size() < n1 or main.end_reason.contains("YOLCU"), "sert düşüşte yolcu düştü ve yolda görünüyor (%d -> %d)" % [n1, main.cargo.size()])
 	if main.game_over:
+		# hepsi düştüyse oyun biter; yeni seferle devam
 		get_tree().paused = false
+		main.open_menu()
+		main.game_over = false
+		main._build_truck()
 		main.start_game()
-		await _wait(0.5)
+		await _wait(0.8)
 	# otogara kadar götür: ücret alınır
 	var g0: int = main.gold_run
 	main.time_left = 100.0
