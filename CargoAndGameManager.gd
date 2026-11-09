@@ -1979,7 +1979,7 @@ func _layout_for_banner() -> void:
 			_base_offsets[c] = Vector2(c.offset_top, c.offset_bottom)
 		var base: Vector2 = _base_offsets[c]
 		var shift: float = 0.0
-		if c == _gauges or c == toast_lbl:
+		if c == _gauges or c == toast_lbl or c == _gas_hint:
 			shift = h
 		elif portrait:
 			shift = h
