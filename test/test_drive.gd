@@ -723,6 +723,9 @@ func _physics_process(delta: float) -> void:
 				main.flip_rescues = 3
 				_flip_truck(tr)
 			return
+		# kurtarma hakkı bitti: kamyon kendiliğinden düzelirse yeniden ters çevir (test kararlı olsun)
+		if cs == "flip" and _rescued and main.flip_rescues >= 3 and not tr.is_flipped() and not main.game_over:
+			_flip_truck(tr)
 		if cs == "flip" and t > 1.0:
 			main._out_time.clear()
 			for c in main.cargo:
