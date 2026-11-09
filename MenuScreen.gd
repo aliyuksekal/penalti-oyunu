@@ -310,7 +310,9 @@ func _build_trucks() -> void:
 		var drv: String = String(d.get("drive", "rwd"))
 		var drive_txt: String = {"awd": "Çekiş: 4x4", "6x6": "Çekiş: 6x6 (altı teker)"}.get(drv, "Çekiş: arkadan itiş")
 		if String(d.get("kind", "truck")) == "tir":
-			drive_txt = "Dorseli çekici, arkadan itiş"
+			drive_txt = "Dorseli çekici • parça başı ücret %65"
+		elif String(d.get("kind", "truck")) == "bus":
+			drive_txt = "Otobüs • %d koltuk" % seats_of(d)
 		elif (d.get("axles", []) as Array).size() == 3 and drv == "rwd":
 			drive_txt = "Çekiş: 6x4 (iki arka aks)"
 		_lbl(info, drive_txt, 14, Color(1.0, 0.8, 0.4))
@@ -318,7 +320,10 @@ func _build_trucks() -> void:
 		_stat(info, "Tutuş", float(d["grip"]) / 1.55)
 		_stat(info, "Süspansiyon", (float(d["stiff"]) + float(d["damp"])) / 2.0 / 1.65)
 		_stat(info, "Yakıt", float(d["fuel"]) / 3.0)
-		_stat(info, "Kasa", capacity_of(d) / 466.0)
+		if String(d.get("kind", "truck")) == "bus":
+			_stat(info, "Koltuk", float(seats_of(d)) / 16.0)
+		else:
+			_stat(info, "Kasa", capacity_of(d) / 466.0)
 
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(150, 64)
@@ -364,6 +369,16 @@ func _stat(parent: Control, title: String, v: float) -> void:
 	h.add_child(pb)
 
 
+## Otobüs koltuk sayısı (TruckArt.paint_bus ile aynı hesap: her camda 2 yolcu)
+static func seats_of(d: Dictionary) -> int:
+	var wx: float = -150.0 - float(d.get("ext", 0.0)) + 12.0
+	var n: int = 0
+	while wx + 40.0 < 84.0:
+		n += 2
+		wx += 48.0
+	return n
+
+
 ## Kasa iç uzunluğu (px): kamyonda 132 + uzama, tırda dorse
 static func capacity_of(d: Dictionary) -> float:
 	if String(d.get("kind", "truck")) == "tir":
@@ -400,8 +415,6 @@ func _build_maps() -> void:
 		ds.custom_minimum_size = Vector2(240, 0)
 		var g: float = float(md["gravity"])
 		var extra: String = "Yer çekimi: %%%d" % int(g * 100.0)
-		if md.has("vehicle"):
-			extra += "  •  Araç: otobüs"
 		_lbl(info, extra, 14, Color(1.0, 0.8, 0.4))
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(150, 64)

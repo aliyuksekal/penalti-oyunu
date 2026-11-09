@@ -54,16 +54,32 @@ static func all() -> Array:
 			"price": 14000, "kind": "tir", "cab": "cabover", "wheel_r": 28.0, "axles": [-52.0, 78.0], "trailer_len": 440.0, "trailer_mass": 0.85, "zoom": 0.66,
 			"body": Color.html("#f4f6f9"), "accent": Color.html("#1e5fb4"), "bed": Color.html("#59606c"), "rim": Color.html("#dfe3e8"),
 			"power": 3.6, "grip": 1.3, "fuel": 3.0, "stiff": 1.5, "damp": 1.6, "speed": 1.3, "mass": 1.7,
-			"tread": "road", "drive": "rwd", "smooth": 0.55, "extras": ["stacks2", "stripe", "visor"]},
-		{"id": "otobus", "name": "Şehirlerarası Otobüs", "desc": "Yolcuları sarsmadan, düşürmeden götür.", "hidden": true,
-			"price": 0, "kind": "bus", "cab": "cabover", "wheel_r": 28.0, "ext": 60.0, "axles": [-158.0, 86.0], "zoom": 0.78,
+			"tread": "road", "drive": "rwd", "smooth": 0.82, "pay": 0.65, "extras": ["stacks2", "stripe", "visor"]},
+		# ---------------- OTOBÜSLER (yolcu taşır; koltuk sayısı gövde uzunluğundan) ----------------
+		{"id": "minibus", "name": "Dolmuş Minibüs", "desc": "Küçük ve çevik. 6 koltuk, her yokuşa tırmanır.",
+			"price": 0, "kind": "bus", "cab": "cabover", "wheel_r": 26.0, "ext": -40.0, "axles": [-80.0, 80.0], "zoom": 0.92,
+			"body": Color.html("#f3c623"), "accent": Color.html("#1d3c78"), "bed": Color.html("#444a55"), "rim": Color.html("#d9dde3"),
+			"power": 1.6, "grip": 1.1, "fuel": 1.3, "stiff": 1.2, "damp": 1.6, "speed": 1.15, "mass": 1.15,
+			"tread": "road", "drive": "rwd", "extras": []},
+		{"id": "otobus", "name": "Şehirlerarası Otobüs", "desc": "Klasik yolcu otobüsü. 12 koltuk.",
+			"price": 4500, "kind": "bus", "cab": "cabover", "wheel_r": 28.0, "ext": 60.0, "axles": [-158.0, 86.0], "zoom": 0.78,
 			"body": Color.html("#f2f2f2"), "accent": Color.html("#d6262b"), "bed": Color.html("#444a55"), "rim": Color.html("#d9dde3"),
 			"power": 2.4, "grip": 1.2, "fuel": 2.2, "stiff": 1.35, "damp": 1.8, "speed": 1.2, "mass": 1.5,
-			"tread": "road", "drive": "rwd", "smooth": 0.7, "extras": []},
+			"tread": "road", "drive": "rwd", "smooth": 0.85, "extras": []},
+		{"id": "luks", "name": "Lüks Turizm", "desc": "Havalı süspansiyon: yolcular daha az sarsılır. 12 koltuk, hızlı.",
+			"price": 8000, "kind": "bus", "cab": "cabover", "wheel_r": 29.0, "ext": 60.0, "axles": [-158.0, 86.0], "zoom": 0.78, "comfort": 1.5,
+			"body": Color.html("#1b2a4a"), "accent": Color.html("#e0b13a"), "bed": Color.html("#444a55"), "rim": Color.html("#e9edf2"),
+			"power": 2.8, "grip": 1.3, "fuel": 2.4, "stiff": 1.3, "damp": 2.2, "speed": 1.3, "mass": 1.55,
+			"tread": "road", "drive": "rwd", "smooth": 0.85, "extras": []},
+		{"id": "uzunyol", "name": "Uzun Yol 3 Akslı", "desc": "Dev otobüs: 16 koltuk, üç aks. Sefer başı en çok bilet.",
+			"price": 12000, "kind": "bus", "cab": "cabover", "wheel_r": 29.0, "ext": 160.0, "axles": [-262.0, -196.0, 86.0], "zoom": 0.7,
+			"body": Color.html("#ffffff"), "accent": Color.html("#1e8c4e"), "bed": Color.html("#444a55"), "rim": Color.html("#d9dde3"),
+			"power": 3.3, "grip": 1.3, "fuel": 2.8, "stiff": 1.45, "damp": 2.0, "speed": 1.25, "mass": 1.75,
+			"tread": "road", "drive": "rwd", "smooth": 0.85, "extras": []},
 	]
 
 
-## Mağazada satılan araçlar (otobüs sadece Otobüs Hattı'nda kullanılır)
+## Mağazada satılan araçlar (hepsi her haritada sürülebilir)
 static func shop() -> Array:
 	return all().filter(func(t): return not bool(t.get("hidden", false)))
 

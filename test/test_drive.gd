@@ -481,7 +481,7 @@ func _maps() -> void:
 			if not is_finite(main.terrain.height_at(float(xi) * 61.0)):
 				finite = false
 		_check(finite, "%s: arazi sonlu" % id)
-		_check(main.truck.kind == ("bus" if id == "otobus" else "truck"), "%s: araç %s" % [id, main.truck.kind])
+		_check(main.truck.kind == "truck", "%s: seçili kamyon her haritada sürülür" % id)
 		main.start_game()
 		_key(true)
 		var tt := 0.0
@@ -495,6 +495,27 @@ func _maps() -> void:
 			get_tree().paused = false
 			main.game_over = false
 		main.open_menu()
+	# tır istasyonda tam durur, yüklerken kaymaz
+	main.select_map("sehir")
+	main.select_truck("tir")
+	await _wait(0.3)
+	main.start_game()
+	_key(true)
+	await _wait(4.0)
+	_key(false)
+	main._enter_station()
+	await _wait(2.5)
+	var x0: float = main.truck.body.global_position.x
+	main.open_station()
+	for q in range(12):
+		main.station_add("sandik")
+	await _wait(2.0)
+	var moved: float = absf(main.truck.body.global_position.x - x0)
+	_check(moved < 6.0 and main.load_btn != null, "tır istasyonda durdu, yüklerken kaymadı (%.1f px)" % moved)
+	_check(main.cargo_price("sandik", 1) < 20, "tırda parça başı ücret düşük (sandık %d)" % main.cargo_price("sandik", 1))
+	main.station_autoload()
+	main.open_menu()
+	main.select_truck("tosun")
 	main.select_map("koy")
 	print("SONUÇ: haritalar bitti")
 
@@ -502,6 +523,14 @@ func _maps() -> void:
 ## Otobüs: yolcular biner, sakin sürüşte pek düşmez, sert düşüşte düşer, teslimde ücret
 func _bus() -> void:
 	main.dev_mode = true
+	for bid in ["minibus", "luks", "uzunyol"]:
+		main.select_truck(bid)
+		await _wait(0.2)
+		_check(main.truck.kind == "bus" and main.truck.seat_count() == main.menu.seats_of(main.truck.model), "%s: %d koltuk" % [bid, main.truck.seat_count()])
+	main.select_truck("otobus")
+	main.select_map("koy")
+	await _wait(0.2)
+	_check(main.truck.kind == "bus", "otobüs köy yolunda da sürülebilir")
 	main.select_map("otobus")
 	await _wait(0.3)
 	main.start_game()
@@ -553,6 +582,7 @@ func _bus() -> void:
 	await _wait(0.3)
 	_check(main.passengers.size() == main.truck.seat_count(), "yolcular otobüste")
 	main.select_map("koy")
+	main.select_truck("tosun")
 	print("SONUÇ: otobüs bitti")
 
 func _shots() -> void:
@@ -639,7 +669,7 @@ func _shots() -> void:
 	# yeni haritalar ve büyük araçlar
 	main.dev_mode = true
 	main.day_t = 0.2
-	for pair in [["sehir", "tir"], ["otobus", "tosun"], ["ay", "mamut"], ["uzay", "kirkayak"], ["koy", "mamut"]]:
+	for pair in [["sehir", "tir"], ["otobus", "uzunyol"], ["ay", "mamut"], ["uzay", "kirkayak"], ["koy", "mamut"]]:
 		main.open_menu()
 		main.selected = String(pair[1])
 		main.select_map(String(pair[0]))

@@ -61,7 +61,7 @@ var best_m: float = 0.0
 var tokens: int = 0
 var cargo_total: int = 5          # bu teslimatta yüklenen yük sayısı
 var dev_mode: bool = false        # geliştirici modu: tüm kamyonlar seçilebilir
-var owned: Array = ["tosun"]
+var owned: Array = ["tosun", "minibus"]
 var selected: String = "tosun"
 ## Harita (bölüm): menüde seçilir
 var map_id: String = "koy"
@@ -1091,9 +1091,10 @@ func _check_passengers(delta: float) -> void:
 	var tilt: float = absf(wrapf(truck.body.global_rotation, -PI, PI))
 	var add: float = maxf(_acc_s - JOLT_FREE, 0.0) + maxf(tilt - 0.45, 0.0) * 2600.0
 	jolt = maxf(jolt + (add - 260.0) * delta, 0.0)
-	if jolt < JOLT_LIMIT or passengers.is_empty():
+	var lim: float = JOLT_LIMIT * float(truck.model.get("comfort", 1.0))   # lüks otobüs daha az sarsar
+	if jolt < lim or passengers.is_empty():
 		return
-	jolt = JOLT_LIMIT * 0.35
+	jolt = lim * 0.35
 	# kırılgan yolcu (yaşlı, aile) daha kolay düşer
 	var total: float = 0.0
 	for k in passengers:
@@ -1192,6 +1193,7 @@ func cargo_price(kind: String, leg: int) -> int:
 		base = float(PASSENGERS[kind]["value"])
 	else:
 		return 0
+	base *= float(truck.model.get("pay", 1.0))   # tırda parça başı ücret daha düşük
 	return clampi(int(round(base * (1.0 + 0.2 * float(clampi(leg, 1, 40) - 1)))), 1, 400)
 
 
@@ -1303,9 +1305,16 @@ func _hold_at_station(delta: float) -> void:
 	truck.gas_pressed = false
 	truck.brake_pressed = false
 	var b: RigidBody2D = truck.body
-	b.linear_velocity = b.linear_velocity.move_toward(Vector2(0, b.linear_velocity.y), 900.0 * delta)
-	for w in truck.wheels:
-		w.angular_velocity = move_toward(w.angular_velocity, 0.0, 60.0 * delta)
+	# el freni: çekici, dorse ve bütün tekerler durur (ağır tır dorsesi itip kaydırmasın)
+	var parked: bool = absf(b.linear_velocity.x) < 25.0
+	for part in truck.rigid_parts():
+		var rb: RigidBody2D = part
+		if parked:
+			rb.linear_velocity.x = 0.0
+		else:
+			rb.linear_velocity = rb.linear_velocity.move_toward(Vector2(0, rb.linear_velocity.y), 1400.0 * delta)
+	for w in truck.wheels + truck.trailer_wheels:
+		w.angular_velocity = 0.0 if parked else move_toward(w.angular_velocity, 0.0, 220.0 * delta)
 	if load_btn != null and station_panel == null:
 		load_btn.visible = absf(b.linear_velocity.x) < 25.0
 
@@ -2063,7 +2072,7 @@ func _update_hud(delta: float) -> void:
 	speed_gauge.set_value(absf(truck.speed_kmh()), delta)
 	heat_gauge.set_value(truck.heat, delta)
 	if is_bus():
-		cargo_lbl.text = "YOLCU %d/%d  ~%d%%" % [passengers.size(), cargo_total, int(clampf(jolt / JOLT_LIMIT, 0.0, 1.0) * 100.0)]
+		cargo_lbl.text = "YOLCU %d/%d  ~%d%%" % [passengers.size(), cargo_total, int(clampf(jolt / (JOLT_LIMIT * float(truck.model.get("comfort", 1.0))), 0.0, 1.0) * 100.0)]
 	else:
 		cargo_lbl.text = "YÜK %d/%d" % [cargo.size(), cargo_total]
 	cargo_lbl.add_theme_color_override("font_color", Color.WHITE if load_count() > 2 else Color(1, 0.45, 0.35))
@@ -2759,7 +2768,7 @@ func _load() -> void:
 	var ids: Array = []
 	for t in TruckCatalog.all():
 		ids.append(t["id"])
-	owned = ["tosun"]
+	owned = ["tosun", "minibus"]
 	var raw = cf.get_value("oyun", "sahip", ["tosun"])
 	if raw is Array:
 		for o in raw:
