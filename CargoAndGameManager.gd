@@ -1274,6 +1274,8 @@ func _hold_at_station(delta: float) -> void:
 func open_station() -> void:
 	if not at_station or station_panel != null:
 		return
+	if absf(truck.body.linear_velocity.x) > 40.0:
+		return   # önce araç dursun
 	_click()
 	load_btn.visible = false
 	var panel := PanelContainer.new()

@@ -578,6 +578,7 @@ func _bus() -> void:
 	_key(false)
 	_check(main.next_cp == cp0 + 1 and main.gold_run > g0, "otogarda ücret alındı: +%d" % [main.gold_run - g0])
 	_check(main.at_station and main.load_btn.text.contains("YOLCU"), "otogarda 'YOLCU AL' tuşu")
+	await _wait(2.0)   # otobüs tam dursun (YOLCU AL tuşu ancak o zaman görünür)
 	main.open_station()
 	await get_tree().process_frame
 	for q in range(30):
