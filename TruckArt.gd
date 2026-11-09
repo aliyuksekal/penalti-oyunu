@@ -335,6 +335,37 @@ static func paint_bus(parent: Node2D, d: Dictionary, wheel_r: float, wheel_y: fl
 		_fender(parent, Vector2(float(axles[i]), wheel_y), wheel_r, body_c.darkened(0.45))
 
 
+## Tekerlek boyası: dişli lastik, yanak, alaşım jant (delikler dönüşü gösterir), krom göbek
+static func paint_wheel(parent: Node2D, d: Dictionary, r: float) -> void:
+	var off: bool = d["tread"] == "offroad"
+	var rim_c: Color = d["rim"]
+	var n: int = 22 if off else 34
+	var depth: float = 5.0 if off else 2.2
+	var tire := PackedVector2Array()
+	for i in range(n * 2):
+		var a: float = TAU * float(i) / float(n * 2)
+		var rr: float = r if (i % 4) < 2 else r - depth
+		tire.append(Vector2(cos(a), sin(a)) * rr)
+	_poly(parent, tire, Color(0.1, 0.1, 0.11))
+	_poly(parent, _circle_at(Vector2.ZERO, r - depth - 1.5, 30), Color(0.17, 0.17, 0.19))
+	_poly(parent, _circle_at(Vector2.ZERO, r * 0.64, 28), rim_c.darkened(0.35))
+	var disc := _poly(parent, _circle_at(Vector2.ZERO, r * 0.58, 28), rim_c)
+	# üst-sol aydınlık, alt-sağ gölge
+	var vc := PackedColorArray()
+	for p in disc.polygon:
+		var k: float = clampf(0.5 - (p.x + p.y) / (r * 1.6), 0.0, 1.0)
+		vc.append(Color(1, 1, 1).lerp(Color(0.62, 0.62, 0.66), 1.0 - k))
+	disc.vertex_colors = vc
+	for i in range(6):
+		var a2: float = TAU * float(i) / 6.0
+		_poly(parent, _circle_at(Vector2(cos(a2), sin(a2)) * r * 0.36, r * 0.11, 10), rim_c.darkened(0.6))
+	_poly(parent, _circle_at(Vector2.ZERO, r * 0.2, 16), Color(0.92, 0.93, 0.96))
+	for i in range(5):
+		var a3: float = TAU * float(i) / 5.0 + 0.3
+		_poly(parent, _circle_at(Vector2(cos(a3), sin(a3)) * r * 0.12, 1.6, 6), Color(0.35, 0.36, 0.4))
+	_poly(parent, PackedVector2Array([Vector2(-r * 0.5, -r * 0.18), Vector2(-r * 0.18, -r * 0.5), Vector2(-r * 0.1, -r * 0.42), Vector2(-r * 0.42, -r * 0.1)]), Color(1, 1, 1, 0.25))
+
+
 ## Garaj ön izlemesi: fiziksiz, sadece görüntü. Uzun araçlar kutuya sığsın diye küçültülür.
 static func build_preview(parent: Node2D, d: Dictionary) -> void:
 	var r: float = d["wheel_r"]
