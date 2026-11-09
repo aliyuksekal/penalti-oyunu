@@ -177,13 +177,18 @@ func layout_for_banner(sz: Vector2, portrait: bool) -> void:
 	var bw: float = 262.0
 	if side_by_side:
 		_spacer.custom_minimum_size = Vector2(sz.x + 16.0, 10)
+		gap = 12.0
+		_buttons.add_theme_constant_override("separation", 12)
 		bw = floorf((avail - sz.x - 16.0 - gap * 4.0) / 4.0)
 	else:
+		_buttons.add_theme_constant_override("separation", 22)
 		bw = minf(262.0, floorf((avail - gap * 3.0) / 4.0))
-	bw = clampf(bw, 150.0, 262.0)
+	bw = clampf(bw, 100.0, 262.0)
 	for b in btns:
 		(b as Button).custom_minimum_size = Vector2(bw, 120)
-		(b as Button).add_theme_font_size_override("font_size", 34 if bw >= 240.0 else (28 if bw >= 190.0 else 24))
+		(b as Button).clip_text = false
+		var fs: int = 34 if bw >= 240.0 else (28 if bw >= 190.0 else (22 if bw >= 150.0 else 18))
+		(b as Button).add_theme_font_size_override("font_size", fs)
 	var row_w: float = bw * 4.0 + gap * 3.0 + (sz.x + 16.0 + gap if side_by_side else 0.0)
 	_buttons.offset_left = -row_w * 0.5
 	_buttons.offset_right = row_w * 0.5
