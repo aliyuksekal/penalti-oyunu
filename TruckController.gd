@@ -634,7 +634,7 @@ func is_in_bed(world_pos: Vector2) -> bool:
 func bed_stack_limit() -> float:
 	if kind == "bus":
 		return bed_floor - 48.0   # yolcular tek sıra ayakta
-	return bed_floor - 75.6 * float(model.get("stack_k", 1.0))   # %5 daha yüksek istif
+	return bed_floor - 72.0 * float(model.get("stack_k", 1.0))
 
 
 func has_bed() -> bool:

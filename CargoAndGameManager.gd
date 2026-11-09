@@ -990,9 +990,7 @@ func _fit_plan(plan: Array) -> Array:
 			out = nx
 	var extra: int = 0
 	var big_bed: bool = truck.bed_right - truck.bed_left > 150.0 and not is_bus()   # sadece büyük kasalar fazladan dolar
-	# yük %5 fazla: standart listeye yüzde 5 daha (yuvarlanarak) eklenir
-	var want: int = int(round(float(plan.size()) * 1.05))
-	while extra < 40 and not plan.is_empty() and (big_bed or out.size() < want):
+	while big_bed and extra < 40 and not plan.is_empty():
 		var nx2: Array = out.duplicate()
 		nx2.append(plan[extra % plan.size()])
 		if not station_fits(nx2):
@@ -1170,7 +1168,7 @@ func station_fits(kinds: Array) -> bool:
 ## Kasa uzunluğuna göre en fazla yük sayısı (tır dorsesi ~3 kamyon eder)
 func station_max_items() -> int:
 	var w: float = truck.bed_right - truck.bed_left
-	return clampi(int(round(STATION_MAX_ITEMS * 1.05 * w / 132.0)), STATION_MAX_ITEMS, 42)
+	return clampi(int(round(STATION_MAX_ITEMS * w / 132.0)), STATION_MAX_ITEMS, 40)
 
 
 func _station_offer_for(leg: int) -> Array:

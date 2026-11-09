@@ -60,6 +60,10 @@ static func load_plan(leg: int, rng: RandomNumberGenerator) -> Array:
 
 ## Yükleri kasaya raf raf diz: soldan sağa, sığmayınca bir üst sıra
 ## x0/x1/floor: kasanın iç sınırları (uzun kasalı kamyonda ve tır dorsesinde daha geniş)
+## Bütün yükler %5 daha ağır: kasada daha oturaklı durur, daha zor dökülür
+const MASS_K := 1.05
+
+
 static func pack(kinds: Array, x0: float = BED_X0, x1: float = BED_X1, floor_y: float = BED_FLOOR) -> Array:
 	var out: Array = []
 	var x: float = x0
@@ -82,7 +86,7 @@ static func make(kind: String, rng: RandomNumberGenerator) -> RigidBody2D:
 	var sz: Vector2 = t["size"]
 	var c := RigidBody2D.new()
 	c.name = kind
-	c.mass = float(t["mass"]) * rng.randf_range(0.9, 1.1)
+	c.mass = float(t["mass"]) * MASS_K * rng.randf_range(0.9, 1.1)
 	c.collision_layer = 4
 	c.collision_mask = 1 | 2 | 4
 	c.continuous_cd = RigidBody2D.CCD_MODE_CAST_SHAPE
