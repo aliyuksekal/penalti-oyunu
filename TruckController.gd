@@ -578,8 +578,9 @@ func wheels_on_ground() -> bool:
 	return false
 
 
+## Ters döndü ya da yan/dik yatıp kaldı (66 dereceden fazla): kendi kendine düzelemez
 func is_flipped() -> bool:
-	return cos(body.global_rotation) < -0.2
+	return cos(body.global_rotation) < 0.4
 
 
 func speed_kmh() -> float:
