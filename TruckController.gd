@@ -405,8 +405,7 @@ func level_suspension(cargo_mass: float, cargo_x: float, instant: bool = false) 
 		var tl: Array = _axle_loads(supports, t_loads)
 		for i in range(_trailer_springs.size()):
 			_set_spring(_trailer_springs[i], float(tl[i]), instant)
-		# pim yükünün tamamı arka yaya bindirilince çekici gazda şaha kalkıyordu: %70'i yeter
-		body_loads.append([float(tl[tl.size() - 1]) * 0.7, KINGPIN.x])
+		body_loads.append([float(tl[tl.size() - 1]), KINGPIN.x])
 	elif cargo_mass > 0.0:
 		body_loads.append([cargo_mass * g, cargo_x])
 	var bl: Array = _axle_loads(axle_list(model), body_loads)
