@@ -274,6 +274,9 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Görüntü çözümleme aracı (emülatör testi için)
+        run: python3 -m pip install -q pillow || pip3 install -q pillow
+
       - name: Emülatörde kurulum ve açılış testi (Android 15)
         uses: reactivecircus/android-emulator-runner@v2
         with:

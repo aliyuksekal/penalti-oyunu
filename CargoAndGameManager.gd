@@ -796,11 +796,40 @@ func buy_map(id: String) -> void:
 
 
 ## Seçili kamyonu (ve yükseltmelerini) başlangıç noktasında kur, kasayı yükle
-func _build_truck(at_x: float = 60.0) -> void:
+## Yükleri HEMEN fizikten çıkar (queue_free kare sonunda siler; o arada yeni yüklerle
+## üst üste binip patlar gibi itişmesinler)
+func _free_cargo_now() -> void:
 	for c in cargo:
-		c.queue_free()
+		if is_instance_valid(c):
+			c.collision_layer = 0
+			c.collision_mask = 0
+			if c.get_parent() != null:
+				c.get_parent().remove_child(c)
+			c.queue_free()
 	cargo.clear()
 	_out_time.clear()
+
+
+## Kasadaki yükün toplam kütlesi ve ağırlık merkezi -> süspansiyon ona göre dengelenir
+var _level_t: float = 0.0
+
+
+func _level_truck(instant: bool = false) -> void:
+	if truck.body == null or truck.cargo_body == null:
+		return
+	var m: float = 0.0
+	var mx: float = 0.0
+	for c in cargo:
+		if is_instance_valid(c) and c.is_inside_tree():
+			var lx: float = truck.cargo_body.to_local(c.global_position).x
+			if lx > truck.bed_left - 20.0 and lx < truck.bed_right + 20.0:
+				m += c.mass
+				mx += c.mass * lx
+	truck.level_suspension(m, mx / m if m > 0.0 else 0.0, instant)
+
+
+func _build_truck(at_x: float = 60.0) -> void:
+	_free_cargo_now()
 	if truck.built:
 		truck.teardown()
 	var vid: String = active_vehicle()
@@ -809,6 +838,7 @@ func _build_truck(at_x: float = 60.0) -> void:
 	truck.build(Vector2(sx, safe_drop_y(sx, 95.0)))
 	start_x = 60.0
 	_spawn_cargo()
+	_level_truck(true)
 
 
 func open_menu() -> void:
@@ -859,6 +889,11 @@ func _physics_process(delta: float) -> void:
 		_recover_truck()
 		return
 	_limit_speeds()
+	# süspansiyonu yüke göre dengele (yük eklenince/düşünce araç yine düz dursun)
+	_level_t += delta
+	if _level_t >= 0.1:
+		_level_t = 0.0
+		_level_truck()
 	var x: float = truck.body.global_position.x
 	if state == "play":
 		_good_t += delta
@@ -1210,11 +1245,7 @@ func _enter_station() -> void:
 	at_station = true
 	_station_kinds = []
 	_station_offer = _station_offer_for(next_cp)
-	for c in cargo:
-		if is_instance_valid(c):
-			c.queue_free()
-	cargo.clear()
-	_out_time.clear()
+	_free_cargo_now()
 	cargo_total = 0
 	_set_drive_controls(false)
 	if load_btn == null:
@@ -1376,15 +1407,7 @@ func station_clear() -> void:
 func _respawn_station_cargo() -> void:
 	# eski yükleri HEMEN fizikten çıkar: yoksa yenileriyle bir kare üst üste binip
 	# patlar gibi itişir (tır dorsesi bu yüzden zıplayıp ters dönüyordu)
-	for c in cargo:
-		if is_instance_valid(c):
-			c.collision_layer = 0
-			c.collision_mask = 0
-			if c.get_parent() != null:
-				c.get_parent().remove_child(c)
-			c.queue_free()
-	cargo.clear()
-	_out_time.clear()
+	_free_cargo_now()
 	var logs: Array = _station_kinds.filter(func(k): return k == "tomruk")
 	var rest: Array = _station_kinds.filter(func(k): return k != "tomruk")
 	var order: Array = logs + rest

@@ -432,7 +432,14 @@ func _alltrucks() -> void:
 		if not main.owned.has(id):
 			main.owned.append(id)
 		main.select_truck(id)
-		await _wait(0.3)
+		await _wait(2.0)
+		# yüklü araç düz yolda düz durmalı (arka çöküp burun havaya kalkmasın)
+		var tilt: float = rad_to_deg(main.truck.body.global_rotation)
+		var slope: float = rad_to_deg(atan2(main.terrain.height_at(main.truck.body.global_position.x + 80.0) - main.terrain.height_at(main.truck.body.global_position.x - 80.0), 160.0))
+		_check(absf(tilt - slope) < 2.5, "%s yüklüyken düz duruyor (eğim %.1f°, yol %.1f°)" % [id, tilt, slope])
+		if main.truck.trailer != null:
+			var tt_tilt: float = rad_to_deg(main.truck.trailer.global_rotation)
+			_check(absf(tt_tilt - slope) < 3.0, "dorse düz duruyor (%.1f°)" % tt_tilt)
 		main.start_game()
 		_key(true)
 		var flips := 0

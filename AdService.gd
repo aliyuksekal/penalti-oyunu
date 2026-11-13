@@ -88,17 +88,32 @@ func set_banner(on: bool) -> void:
 
 
 ## Banner'ın oyun ekranındaki (mantıksal) boyutu: alt orta. Yoksa sıfır.
+var _last_logged: Vector2 = Vector2(-1, -1)
+
+
 func banner_size_logical() -> Vector2:
 	if not banner_on:
 		return Vector2.ZERO
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	if _bridge != null:
-		var hp: int = _bridge.banner_height_px()
+		if not _bridge.banner_present():
+			return Vector2.ZERO
 		var win: Vector2i = DisplayServer.window_get_size()
-		if hp > 0 and win.y > 0:
-			var k: float = vp.y / float(win.y)
-			return Vector2(float(_bridge.banner_width_px()) * k, float(hp) * k)
-		return Vector2.ZERO
+		if win.y <= 0:
+			return Vector2.ZERO
+		var px: Vector2 = Vector2(_bridge.banner_px())
+		if px.x <= 0.0 or px.y <= 0.0:
+			# eklenti boyut vermediyse: standart banner 320x50 dp, ekran yoğunluğuyla piksele çevir
+			var density: float = float(DisplayServer.screen_get_dpi()) / 160.0
+			if density < 0.5 or density > 8.0:
+				density = maxf(DisplayServer.screen_get_scale(), 1.0)
+			px = Vector2(320.0, 50.0) * density
+		var k: float = vp.y / float(win.y)
+		var out: Vector2 = px * k
+		if not out.is_equal_approx(_last_logged):
+			_last_logged = out
+			print("[reklam] banner %dx%d px, pencere %dx%d, oyun ekranı %dx%d -> %dx%d" % [int(px.x), int(px.y), win.x, win.y, int(vp.x), int(vp.y), int(out.x), int(out.y)])
+		return out
 	# yer tutucu: tipik telefonda 320x50 dp'nin kapladığı alan (kısa kenar ~393 dp)
 	var dp: float = minf(vp.x, vp.y) / 393.0
 	return Vector2(320.0, 50.0) * dp

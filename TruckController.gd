@@ -259,12 +259,13 @@ func build(spawn: Vector2) -> void:
 	wheels.clear()
 	trailer_wheels.clear()
 	var axles: Array = axle_list(model)
-	var cargo_share: float = 5.0 * 0.4 * (0.4 if kind == "tir" else 1.0)
+	_body_springs.clear()
+	_trailer_springs.clear()
 	for ax in axles:
 		var wpos: Vector2 = origin + Vector2(float(ax), wheel_y)
 		var w := _make_wheel(wpos)
 		wheels.append(w)
-		_suspend(body, w, wpos, (body_mass + cargo_share) * _gravity() / float(axles.size()))
+		_body_springs.append(_suspend(body, w, wpos, body_mass * _gravity() / float(axles.size())))
 
 	if kind == "tir":
 		_build_trailer(origin)
@@ -273,6 +274,7 @@ func build(spawn: Vector2) -> void:
 	var inv: Transform2D = body.transform.affine_inverse()
 	for part in rigid_parts():
 		_rest[part] = inv * (part as RigidBody2D).transform
+	level_suspension(0.0, 0.0, true)
 
 	# ---------------- kamera ----------------
 	camera = Camera2D.new()
@@ -310,7 +312,7 @@ static func trailer_axles(def: Dictionary) -> Array:
 
 
 ## Bir tekeri gövdeye dikey ray + yay/amortisörle bağla
-func _suspend(frame: RigidBody2D, w: RigidBody2D, wpos: Vector2, load_n: float) -> void:
+func _suspend(frame: RigidBody2D, w: RigidBody2D, wpos: Vector2, load_n: float) -> DampedSpringJoint2D:
 	var groove := GrooveJoint2D.new()
 	groove.position = wpos - Vector2(0, UP_TRAVEL)
 	groove.length = UP_TRAVEL + DOWN_TRAVEL
@@ -329,6 +331,69 @@ func _suspend(frame: RigidBody2D, w: RigidBody2D, wpos: Vector2, load_n: float) 
 	_parts.append(spring)
 	spring.node_a = spring.get_path_to(frame)
 	spring.node_b = spring.get_path_to(w)
+	return spring
+
+
+## ---------------- yük dengeleme (kendini düzleyen süspansiyon) ----------------
+## Yük hep arkada durduğu için arka yaylar çöküp kamyonun burnu havaya kalkıyordu.
+## Her aksın taşıdığı gerçek ağırlık (gövde + kasadaki yükün yeri) hesaplanır ve
+## o aksın yayına o kadar ön yük verilir: araç boşken de doluyken de düz durur.
+var _body_springs: Array = []
+var _trailer_springs: Array = []
+
+
+## xs: destek noktaları (arka -> ön, sonuncusu ön destek); loads: [[kuvvet, x], ...]
+## Dönen: her desteğin taşıdığı kuvvet (arka akslar grubu yükü eşit paylaşır)
+static func _axle_loads(xs: Array, loads: Array) -> Array:
+	var total: float = 0.0
+	var moment: float = 0.0
+	for l in loads:
+		total += float(l[0])
+		moment += float(l[0]) * float(l[1])
+	var n: int = xs.size()
+	if n == 1:
+		return [total]
+	var xf: float = float(xs[n - 1])
+	var xr: float = 0.0
+	for i in range(n - 1):
+		xr += float(xs[i])
+	xr /= float(n - 1)
+	var rf: float = clampf((moment - total * xr) / maxf(xf - xr, 1.0), 0.0, total)
+	var out: Array = []
+	for i in range(n - 1):
+		out.append((total - rf) / float(n - 1))
+	out.append(rf)
+	return out
+
+
+func _set_spring(sp: DampedSpringJoint2D, load_n: float, instant: bool) -> void:
+	if sp == null or not is_instance_valid(sp):
+		return
+	var target: float = SPRING_TOP + clampf(load_n / maxf(suspension_stiffness, 1.0), 2.0, 60.0)
+	sp.rest_length = target if instant else move_toward(sp.rest_length, target, 2.0)
+
+
+## cargo_mass: kasadaki yükün toplam kütlesi; cargo_x: yükün ağırlık merkezi (kasa gövdesine göre x)
+func level_suspension(cargo_mass: float, cargo_x: float, instant: bool = false) -> void:
+	if body == null or _body_springs.is_empty():
+		return
+	var g: float = _gravity()
+	var body_loads: Array = [[body.mass * g, body.center_of_mass.x]]
+	if trailer != null:
+		var t_loads: Array = [[trailer.mass * g, trailer.center_of_mass.x]]
+		if cargo_mass > 0.0:
+			t_loads.append([cargo_mass * g, cargo_x])
+		var supports: Array = trailer_axles(model)
+		supports.append(0.0)   # beşinci teker pimi = dorsenin ön desteği
+		var tl: Array = _axle_loads(supports, t_loads)
+		for i in range(_trailer_springs.size()):
+			_set_spring(_trailer_springs[i], float(tl[i]), instant)
+		body_loads.append([float(tl[tl.size() - 1]), KINGPIN.x])
+	elif cargo_mass > 0.0:
+		body_loads.append([cargo_mass * g, cargo_x])
+	var bl: Array = _axle_loads(axle_list(model), body_loads)
+	for i in range(_body_springs.size()):
+		_set_spring(_body_springs[i], float(bl[i]), instant)
 
 
 ## Tır dorsesi: uzun düz platform, önde yüksek alın, arkada kapak; beşinci tekere mafsallı
@@ -364,7 +429,7 @@ func _build_trailer(origin: Vector2) -> void:
 		var wpos: Vector2 = trailer.position + Vector2(float(tx), ty)
 		var w := _make_wheel(wpos)
 		trailer_wheels.append(w)
-		_suspend(trailer, w, wpos, (trailer.mass + 2.0) * _gravity() * 0.5)
+		_trailer_springs.append(_suspend(trailer, w, wpos, trailer.mass * _gravity() * 0.5))
 	var pin := PinJoint2D.new()
 	pin.position = trailer.position
 	pin.softness = 0.0
@@ -395,6 +460,8 @@ func teardown() -> void:
 		if is_instance_valid(p):
 			p.queue_free()
 	_parts.clear()
+	_body_springs.clear()
+	_trailer_springs.clear()
 	wheels.clear()
 	trailer_wheels.clear()
 	trailer = null

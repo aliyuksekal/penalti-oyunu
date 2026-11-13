@@ -172,25 +172,33 @@ func show_rewarded(on_reward: Callable, on_cancel: Callable) -> bool:
 
 
 # ---------------- banner (alt orta, küçük 320x50) ----------------
+## Banner oluşturulur oluşturulmaz "var" sayılır: yerleşim onun yüklenmesini beklemez
+## (bazı telefonlarda "yüklendi" bildirimi gelmiyor, tuşlar reklamın altında kalıyordu).
 func _make_banner() -> void:
 	if banner_id == "" or _banner != null:
 		return
 	_banner = AdView.new(banner_id, AdSize.BANNER, AdPosition.BOTTOM)
 	_banner.ad_listener.on_ad_loaded = func() -> void:
 		banner_loaded = true
+		print("[reklam] banner yüklendi: %dx%d px" % [_banner.get_width_in_pixels(), _banner.get_height_in_pixels()])
 		if _banner_want:
 			_banner.show()
 		else:
 			_banner.hide()
 		status_changed.emit()
-	_banner.ad_listener.on_ad_failed_to_load = func(_e: LoadAdError) -> void:
+	_banner.ad_listener.on_ad_failed_to_load = func(e: LoadAdError) -> void:
 		banner_loaded = false
+		print("[reklam] banner yüklenemedi: %s" % str(e.message if e != null else ""))
 	_banner.load_ad(AdRequest.new())
+	print("[reklam] banner istendi")
+	if not _banner_want:
+		_banner.hide()
+	status_changed.emit()
 
 
 func set_banner(on: bool) -> void:
 	_banner_want = on
-	if _banner == null or not banner_loaded:
+	if _banner == null:
 		return
 	if on:
 		_banner.show()
@@ -198,14 +206,17 @@ func set_banner(on: bool) -> void:
 		_banner.hide()
 
 
-## Banner yüksekliği (ekran pikseli); yüklenmediyse 0
-func banner_height_px() -> int:
-	if _banner == null or not banner_loaded:
-		return 0
-	return _banner.get_height_in_pixels()
+## Banner ekranda yer kaplıyor mu (oluşturuldu ve isteniyor)
+func banner_present() -> bool:
+	return _banner != null and _banner_want
 
 
-func banner_width_px() -> int:
-	if _banner == null or not banner_loaded:
-		return 0
-	return _banner.get_width_in_pixels()
+## Banner boyutu (ekran pikseli). Eklenti söylemezse 0x0 döner; o zaman dp'den hesaplanır.
+func banner_px() -> Vector2i:
+	if _banner == null:
+		return Vector2i.ZERO
+	var w: int = _banner.get_width_in_pixels()
+	var h: int = _banner.get_height_in_pixels()
+	if w > 0 and h > 0:
+		return Vector2i(w, h)
+	return Vector2i.ZERO

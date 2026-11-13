@@ -29,25 +29,54 @@ if [[ "$R" != *Success* ]]; then
 fi
 
 # 3) Aç, bekle, ekran görüntüsü al, dokun, çökme kontrolü
+# Tuşların yeri banner reklama göre değiştiği için dokunulacak yer ekran görüntüsünden bulunur
+# (sabit koordinatla yanlışlıkla reklama dokunulup Chrome açılıyordu).
+adb shell settings put secure immersive_mode_confirmations confirmed > /dev/null 2>&1
+adb shell settings put system accelerometer_rotation 0
+adb shell settings put system user_rotation 0
 adb logcat -c
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-sleep 30
-adb exec-out screencap -p > "$OUT/01_launch.png"
-SIZE=$(adb shell wm size | tail -1 | awk '{print $NF}'); W=${SIZE%x*}; H=${SIZE#*x}
-# BAŞLA (sol alt) -> oyun; sonra GAZ (sağ alt) 4 sn basılı tut
-if [ "$W" -gt "$H" ]; then BX=$((W*16/100)); BY=$((H*88/100)); else BX=$((W*25/100)); BY=$((H*95/100)); fi
-adb shell input tap $BX $BY; sleep 4
-adb exec-out screencap -p > "$OUT/02_game.png"
-adb shell input swipe $((W*88/100)) $((H*95/100)) $((W*88/100)) $((H*95/100)) 5000; sleep 1
-adb exec-out screencap -p > "$OUT/03_after_gas.png"
-# ekranı döndür: üst bilgi şeridi hep en üstte kalmalı
-adb shell settings put system accelerometer_rotation 0
-adb shell settings put system user_rotation 1; sleep 4
-adb exec-out screencap -p > "$OUT/04_landscape.png"
-adb shell settings put system user_rotation 0; sleep 4
-adb exec-out screencap -p > "$OUT/05_portrait_again.png"
+sleep 35
+shot() { adb exec-out screencap -p > "$OUT/$1"; }
+focus_ok() { adb shell dumpsys window 2>/dev/null | grep -E "mCurrentFocus|mFocusedApp" | grep -q "$PKG"; }
+find_green() { python3 tools/find_blob.py "$1" "$2" "$3" "$4" "$5" 2>/dev/null; }
+
+shot 01_menu_portrait.png
+adb shell settings put system user_rotation 1; sleep 6
+shot 02_menu_landscape.png
+adb shell settings put system user_rotation 0; sleep 6
+shot tmp.png
+# BAŞLA: sol alttaki yeşil tuş
+P=$(find_green "$OUT/tmp.png" 0.0 0.6 0.45 1.0)
+if [ -n "$P" ]; then
+  echo "BAŞLA tuşu bulundu: $P" | tee -a "$OUT/result.txt"
+  adb shell input tap $P; sleep 6
+else
+  echo "BAŞLA tuşu ekranda bulunamadı" | tee -a "$OUT/result.txt"; FAIL=1
+fi
+shot 03_game_portrait.png
+# GAZ: sağ alttaki yeşil pedal, 5 sn basılı tut
+G=$(find_green "$OUT/03_game_portrait.png" 0.6 0.6 1.0 1.0)
+if [ -n "$G" ]; then
+  echo "GAZ pedalı bulundu: $G" | tee -a "$OUT/result.txt"
+  adb shell input swipe $G $G 5000; sleep 1
+else
+  echo "GAZ pedalı ekranda bulunamadı" | tee -a "$OUT/result.txt"; FAIL=1
+fi
+shot 04_after_gas.png
+# ekranı döndür: üst bilgi şeridi hep en üstte, tuşlar banner'ın iki yanında kalmalı
+adb shell settings put system user_rotation 1; sleep 6
+shot 05_game_landscape.png
+G2=$(find_green "$OUT/05_game_landscape.png" 0.7 0.5 1.0 1.0)
+if [ -n "$G2" ]; then adb shell input swipe $G2 $G2 3000; sleep 1; fi
+shot 06_game_landscape_gas.png
+adb shell settings put system user_rotation 0; sleep 5
+shot 07_portrait_again.png
+rm -f "$OUT/tmp.png"
+if focus_ok; then echo "Oyun ön planda (reklama yanlışlıkla dokunulmadı)" | tee -a "$OUT/result.txt"; else echo "Oyun ön planda DEĞİL: $(adb shell dumpsys window | grep mCurrentFocus | tr -d '\r')" | tee -a "$OUT/result.txt"; FAIL=1; fi
 PID=$(adb shell pidof "$PKG" | tr -d '\r')
 adb logcat -d > "$OUT/logcat.txt"
+grep -E "godot +: \[reklam\]" "$OUT/logcat.txt" | sed 's/^.*godot *: //' | sort -u | head -12 | tee -a "$OUT/result.txt"
 if [ -n "$PID" ]; then echo "Uygulama çalışıyor (pid $PID)" | tee -a "$OUT/result.txt"; else echo "Uygulama çalışmıyor / kapandı" | tee -a "$OUT/result.txt"; FAIL=1; fi
 if grep -E "FATAL EXCEPTION|SCRIPT ERROR|signal 11|Abort message" "$OUT/logcat.txt" | head -5 | tee -a "$OUT/result.txt" | grep -q .; then FAIL=1; fi
 echo "SONUÇ: $([ $FAIL = 0 ] && echo BAŞARILI || echo HATALI)" | tee -a "$OUT/result.txt"
