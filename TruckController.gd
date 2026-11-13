@@ -374,6 +374,22 @@ func _set_spring(sp: DampedSpringJoint2D, load_n: float, instant: bool) -> void:
 	sp.rest_length = target if instant else move_toward(sp.rest_length, target, 3.0)
 
 
+## Tır: çekici dorseye göre şaha kalkmasın / burnunu gömmesin. Pim açı sınırı fizikte
+## yumuşak kaldığı için çekici dorseye göre 0.3 radyandan fazla dönerse geri itilir.
+func _hold_articulation(delta: float) -> void:
+	if trailer == null:
+		return
+	var rel: float = wrapf(body.global_rotation - trailer.global_rotation, -PI, PI)
+	var lim: float = 0.3
+	if absf(rel) <= lim:
+		return
+	var push: float = (absf(rel) - lim) * 14.0 * delta * -signf(rel)
+	body.angular_velocity += push
+	trailer.angular_velocity -= push * 0.35
+	if rel * body.angular_velocity > 0.0:
+		body.angular_velocity *= 0.85   # açılmaya devam ediyorsa frenle
+
+
 ## cargo_mass: kasadaki yükün toplam kütlesi; cargo_x: yükün ağırlık merkezi (kasa gövdesine göre x)
 func level_suspension(cargo_mass: float, cargo_x: float, instant: bool = false) -> void:
 	if body == null or _body_springs.is_empty():
@@ -389,7 +405,8 @@ func level_suspension(cargo_mass: float, cargo_x: float, instant: bool = false) 
 		var tl: Array = _axle_loads(supports, t_loads)
 		for i in range(_trailer_springs.size()):
 			_set_spring(_trailer_springs[i], float(tl[i]), instant)
-		body_loads.append([float(tl[tl.size() - 1]), KINGPIN.x])
+		# pim yükünün tamamı arka yaya bindirilince çekici gazda şaha kalkıyordu: %70'i yeter
+		body_loads.append([float(tl[tl.size() - 1]) * 0.7, KINGPIN.x])
 	elif cargo_mass > 0.0:
 		body_loads.append([cargo_mass * g, cargo_x])
 	var bl: Array = _axle_loads(axle_list(model), body_loads)
@@ -507,6 +524,7 @@ func _physics_process(delta: float) -> void:
 	if not built or body == null:
 		return
 	var grounded: bool = wheels_on_ground()
+	_hold_articulation(delta)
 	var can_drive: bool = engine_enabled and not overheated and fuel > 0.0
 	var throttle: float = 0.0
 	if can_drive and gas_pressed:
