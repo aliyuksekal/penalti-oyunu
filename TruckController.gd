@@ -369,15 +369,9 @@ static func _axle_loads(xs: Array, loads: Array) -> Array:
 func _set_spring(sp: DampedSpringJoint2D, load_n: float, instant: bool) -> void:
 	if sp == null or not is_instance_valid(sp):
 		return
-	# ağır yükte (tır) yay sertleşir: ön gerilme 40 px'i aşmasın, yoksa yay yetmeyip çöküyordu
-	var k: float = maxf(suspension_stiffness, load_n / 40.0)
-	var target: float = SPRING_TOP + clampf(load_n / k, 2.0, 60.0)
-	if instant:
-		sp.stiffness = k
-		sp.rest_length = target
-	else:
-		sp.stiffness = move_toward(sp.stiffness, k, maxf(k * 0.05, 1.0))
-		sp.rest_length = move_toward(sp.rest_length, target, 2.0)
+	# yay sertliği aynı kalır (sertleşince tır zıplayıp yük döküyordu); ağır yükte ön gerilme büyür
+	var target: float = SPRING_TOP + clampf(load_n / maxf(suspension_stiffness, 1.0), 2.0, 150.0)
+	sp.rest_length = target if instant else move_toward(sp.rest_length, target, 3.0)
 
 
 ## cargo_mass: kasadaki yükün toplam kütlesi; cargo_x: yükün ağırlık merkezi (kasa gövdesine göre x)
