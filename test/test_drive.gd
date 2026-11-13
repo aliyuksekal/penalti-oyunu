@@ -35,6 +35,9 @@ func _ready() -> void:
 	elif cs == "maps":
 		await _maps()
 		get_tree().quit()
+	elif cs == "store":
+		await _store_shots()
+		get_tree().quit()
 	elif cs == "bus":
 		await _dev_pin()
 		await _bus()
@@ -90,6 +93,72 @@ func _wait(s: float) -> void:
 ## Kamyonu tekerleriyle birlikte ters çevir (gerçek devrilme gibi, teker toprağa gömülmeden)
 func _flip_truck(tr) -> void:
 	tr.place_at(tr.body.global_position + Vector2(0, -170), PI)
+
+
+## Play Store ekran görüntüleri (1920x1080, reklam yer tutucusu kapalı)
+func _store_scene(map_id: String, truck_id: String, day: float, drive_s: float) -> void:
+	main.open_menu()
+	main.selected = truck_id
+	main.select_map(map_id)
+	await _wait(0.4)
+	main.day_t = day
+	main.start_game()
+	main.ads.set_banner(false)
+	_key(true)
+	var tt := 0.0
+	while tt < drive_s and not main.game_over:
+		await get_tree().physics_frame
+		tt += 1.0 / 60.0
+		_key(main.truck.body.global_rotation > -0.45)
+	_key(false)
+	await _wait(0.35)
+
+
+func _store_shots() -> void:
+	main.ads.set_banner(false)
+	main.owned = []
+	for d in main.TruckCatalog.all():
+		main.owned.append(d["id"])
+	main.maps_owned = []
+	for m in main.TerrainGen.MAPS:
+		main.maps_owned.append(m)
+	main.tokens = 2500
+	main.total_gold = 8400
+	main.best_m = 4120.0
+	main._saved_run = {}
+	main.day_t = 0.22
+	main.selected = "bozkurt"
+	main.select_map("koy")
+	main.menu.refresh()
+	await _wait(1.2)
+	main.ads.set_banner(false)
+	await _shot("store_1_menu.png")
+	await _store_scene("koy", "bozkurt", 0.24, 4.0)
+	await _shot("store_2_koy.png")
+	# istasyonda yük seçimi
+	main._enter_station()
+	await _wait(1.8)
+	main.open_station()
+	await _wait(0.2)
+	for k in main._station_offer.slice(0, 3):
+		main.station_add(String(k))
+		main.station_add(String(k))
+	await _wait(0.9)
+	await _shot("store_3_istasyon.png")
+	main.station_autoload()
+	await _store_scene("sehir", "tir", 0.68, 4.5)
+	await _shot("store_4_tir.png")
+	await _store_scene("otobus", "uzunyol", 0.3, 3.5)
+	await _shot("store_5_otobus.png")
+	await _store_scene("ay", "mamut", 0.3, 4.0)
+	await _shot("store_6_ay.png")
+	await _store_scene("volkan", "dagkecisi", 0.3, 4.0)
+	await _shot("store_7_volkan.png")
+	await _store_scene("col", "kartal", 0.3, 4.0)
+	await _shot("store_8_col.png")
+	await _store_scene("maden", "kirkayak", 0.3, 4.0)
+	await _shot("store_9_maden.png")
+	print("SONUÇ: mağaza görüntüleri bitti")
 
 
 func _shot(name: String) -> void:
@@ -768,7 +837,7 @@ func _shots() -> void:
 	await _wait(0.4)
 
 func _physics_process(delta: float) -> void:
-	if _done or not _driving or _case() in ["economy", "alltrucks", "shots", "touch", "systems", "controls", "maps", "bus"]:
+	if _done or not _driving or _case() in ["economy", "alltrucks", "shots", "touch", "systems", "controls", "maps", "bus", "store"]:
 		return
 	t += delta
 	var tr = main.truck

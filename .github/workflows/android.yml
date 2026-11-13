@@ -169,9 +169,11 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri libglx-mesa0 mesa-utils > /dev/null
           mkdir -p build/screenshots && touch build/.gdignore
           timeout 300 xvfb-run -a -s "-screen 0 1600x1600x24" godot --path . --rendering-driver opengl3 --resolution 1280x720 res://test/test.tscn -- --case=shots --shot 2>&1 | tee shots.log || true
+          # Play Store için 1920x1080 görüntüler
+          timeout 300 xvfb-run -a -s "-screen 0 2000x2000x24" godot --path . --rendering-driver opengl3 --resolution 1920x1080 res://test/test.tscn -- --case=store --shot 2>&1 | tee store.log || true
           mv -f *.png build/screenshots/ 2>/dev/null || true
           ls -la build/screenshots
-          if grep -E "SCRIPT ERROR|Invalid call|Invalid access|Invalid get|Invalid set|Invalid assignment" shots.log; then echo "::error::Çizim sırasında hata"; exit 1; fi
+          if grep -E "SCRIPT ERROR|Invalid call|Invalid access|Invalid get|Invalid set|Invalid assignment" shots.log store.log; then echo "::error::Çizim sırasında hata"; exit 1; fi
 
       - name: Geçici test anahtarı (derlemeler arasında aynı kalsın)
         uses: actions/cache@v4
