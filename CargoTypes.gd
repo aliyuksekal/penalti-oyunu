@@ -60,8 +60,8 @@ static func load_plan(leg: int, rng: RandomNumberGenerator) -> Array:
 
 ## Yükleri kasaya raf raf diz: soldan sağa, sığmayınca bir üst sıra
 ## x0/x1/floor: kasanın iç sınırları (uzun kasalı kamyonda ve tır dorsesinde daha geniş)
-## Bütün yükler %5 daha ağır: kasada daha oturaklı durur, daha zor dökülür
-const MASS_K := 1.05
+## Yük ağırlığı çarpanı (1.0 = normal)
+const MASS_K := 1.0
 
 
 static func pack(kinds: Array, x0: float = BED_X0, x1: float = BED_X1, floor_y: float = BED_FLOOR) -> Array:

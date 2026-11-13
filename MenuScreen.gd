@@ -445,10 +445,10 @@ func _build_maps() -> void:
 		card.add_child(h)
 		var sw := ColorRect.new()
 		sw.custom_minimum_size = Vector2(110, 90)
-		sw.color = {"koy": Color(0.4, 0.7, 0.3), "sehir": Color(0.3, 0.32, 0.36), "otobus": Color(0.85, 0.2, 0.2), "ay": Color(0.72, 0.72, 0.75), "uzay": Color(0.35, 0.15, 0.6)}.get(mid, Color.GRAY)
+		sw.color = {"koy": Color(0.4, 0.7, 0.3), "sehir": Color(0.3, 0.32, 0.36), "otobus": Color(0.85, 0.2, 0.2), "ay": Color(0.72, 0.72, 0.75), "uzay": Color(0.35, 0.15, 0.6), "col": Color(0.9, 0.72, 0.42), "buzul": Color(0.7, 0.86, 0.98), "volkan": Color(0.8, 0.25, 0.08), "maden": Color(0.35, 0.28, 0.2)}.get(mid, Color.GRAY)
 		sw.mouse_filter = Control.MOUSE_FILTER_PASS
 		h.add_child(sw)
-		var ic := _lbl(sw, {"koy": "🌲", "sehir": "🏙", "otobus": "🚌", "ay": "🌕", "uzay": "🪐"}.get(mid, ""), 48, Color.WHITE)
+		var ic := _lbl(sw, {"koy": "🌲", "sehir": "🏙", "otobus": "🚌", "ay": "🌕", "uzay": "🪐", "col": "🏜", "buzul": "🧊", "volkan": "🌋", "maden": "⛏"}.get(mid, ""), 48, Color.WHITE)
 		ic.position = Vector2(26, 14)
 		var info := VBoxContainer.new()
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL

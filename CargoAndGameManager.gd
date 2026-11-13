@@ -46,6 +46,10 @@ const MAP_ZONE_NAMES := {
 	"sehir": ["Şehir Çıkışı", "Çevre Yolu", "Otoyol", "Viyadükler", "Sanayi Bölgesi", "Sahil Yolu", "Boğaz Geçişi", "Başkent Girişi"],
 	"otobus": ["Merkez Otogar", "Çevre Yolu", "Otoyol", "Mola Tesisi", "Viyadükler", "Sahil Yolu", "Dağ Geçişi", "Varış Otogarı"],
 	"ay": ["Sükûnet Denizi", "Krater Vadisi", "Tozlu Ova", "Kopernik Krateri", "Karanlık Yüz", "Tycho Yaylası", "Kutup Üssü", "Ay Zirvesi"],
+	"col": ["Vaha Girişi", "Kum Tepeleri", "Kervan Yolu", "Kızıl Kanyon", "Serap Ovası", "Kavurucu Düzlük", "Firavun Vadisi", "Kumul Denizi"],
+	"buzul": ["Kutup Kampı", "Buz Ovası", "Kar Fırtınası", "Buzul Yarığı", "Penguen Koyu", "Aysberg Yolu", "Kuzey Işıkları", "Buz Zirvesi"],
+	"volkan": ["Kül Ovası", "Lav Nehri", "Duman Geçidi", "Kraterin Ağzı", "Kızgın Yamaç", "Obsidyen Vadi", "Ateş Dağı", "Magma Kalbi"],
+	"maden": ["Ocak Girişi", "Kömür Galerisi", "Raylı Tünel", "Su Baskını", "Derin Kuyu", "Kristal Mağara", "Altın Damarı", "Yerin Dibi"],
 	"uzay": ["Yıldız Kapısı", "Işık Köprüsü", "Meteor Kuşağı", "Halka Yolu", "Nebula Geçidi", "Kara Delik Kıyısı", "Galaksi Merkezi", "Sonsuzluk"],
 }
 
@@ -153,18 +157,19 @@ class Pedal extends Control:
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = base_color.darkened(0.25) if down else base_color
 		sb.bg_color.a = 0.9 if down else 0.6
-		sb.set_corner_radius_all(28)
+		var k: float = clampf(size.y / 212.0, 0.4, 2.0)   # çizim boyutla ölçeklenir
+		sb.set_corner_radius_all(int(28.0 * k))
 		sb.border_color = Color(1, 1, 1, 0.85 if down else 0.45)
-		sb.set_border_width_all(5)
+		sb.set_border_width_all(maxi(int(5.0 * k), 2))
 		draw_style_box(sb, Rect2(Vector2.ZERO, size))
-		var c: Vector2 = size * 0.5 + Vector2(0, -22)
-		var a: float = 30.0
+		var c: Vector2 = size * 0.5 + Vector2(0, -22.0 * k)
+		var a: float = 30.0 * k
 		var tri := PackedVector2Array([c + Vector2(a * arrow, 0), c + Vector2(-a * 0.6 * arrow, -a), c + Vector2(-a * 0.6 * arrow, a)])
 		draw_colored_polygon(tri, Color(1, 1, 1, 0.95))
 		var f: Font = ThemeDB.fallback_font
-		var fs: int = 30
+		var fs: int = int(30.0 * k)
 		var ts: Vector2 = f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-		draw_string(f, Vector2((size.x - ts.x) * 0.5, size.y - 30.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+		draw_string(f, Vector2((size.x - ts.x) * 0.5, size.y - 30.0 * k), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
 
 
 ## Ayarlar çarkı (kodla çizilir)
@@ -235,31 +240,35 @@ class Gauge extends Control:
 	func _draw() -> void:
 		var c: Vector2 = size * 0.5
 		var r: float = minf(size.x, size.y) * 0.5 - 4.0
-		draw_circle(c, r + 3.0, Color(0.75, 0.77, 0.82, 0.9))
+		var k: float = clampf(r / 81.0, 0.4, 2.0)   # yazılar ve çizgiler boyutla ölçeklenir
+		var f15: int = maxi(int(15.0 * k), 9)
+		var f14: int = maxi(int(14.0 * k), 9)
+		var f20: int = maxi(int(20.0 * k), 11)
+		draw_circle(c, r + 3.0 * k, Color(0.75, 0.77, 0.82, 0.9))
 		draw_circle(c, r, Color(0.06, 0.07, 0.1, 0.88))
 		if red_from >= 0.0:
-			draw_arc(c, r - 9.0, _ang(red_from), _ang(max_v), 24, Color(0.9, 0.15, 0.12), 8.0)
+			draw_arc(c, r - 9.0 * k, _ang(red_from), _ang(max_v), 24, Color(0.9, 0.15, 0.12), 8.0 * k)
 		var f: Font = ThemeDB.fallback_font
 		for i in range(major + 1):
 			var v: float = max_v * float(i) / float(major)
 			var a: float = _ang(v)
 			var dir := Vector2(cos(a), sin(a))
-			draw_line(c + dir * (r - 16.0), c + dir * (r - 4.0), Color.WHITE, 3.0)
+			draw_line(c + dir * (r - 16.0 * k), c + dir * (r - 4.0 * k), Color.WHITE, 3.0 * k)
 			var txt: String = str(int(v)) if labels.is_empty() else (String(labels[i]) if i < labels.size() else "")
 			if txt != "":
-				var ts: Vector2 = f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
-				draw_string(f, c + dir * (r - 30.0) - Vector2(ts.x * 0.5, -5.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.85, 0.88, 0.95))
+				var ts: Vector2 = f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, f15)
+				draw_string(f, c + dir * (r - 30.0 * k) - Vector2(ts.x * 0.5, -5.0 * k), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, f15, Color(0.85, 0.88, 0.95))
 			if i < major:
 				var a2: float = _ang(v + max_v / float(major) * 0.5)
 				var d2 := Vector2(cos(a2), sin(a2))
-				draw_line(c + d2 * (r - 10.0), c + d2 * (r - 4.0), Color(1, 1, 1, 0.6), 2.0)
-		var ts2: Vector2 = f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
+				draw_line(c + d2 * (r - 10.0 * k), c + d2 * (r - 4.0 * k), Color(1, 1, 1, 0.6), 2.0 * k)
+		var ts2: Vector2 = f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, f14)
 		var ty: float = r * 0.42 if unit != "" else -r * 0.3   # hararette yazı ortanın üstünde (S/H ile çakışmasın)
-		draw_string(f, c + Vector2(-ts2.x * 0.5, ty), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.75, 0.3))
+		draw_string(f, c + Vector2(-ts2.x * 0.5, ty), title, HORIZONTAL_ALIGNMENT_LEFT, -1, f14, Color(1.0, 0.75, 0.3))
 		if unit != "":
 			var val: String = "%d %s" % [int(round(value)), unit]
-			var ts3: Vector2 = f.get_string_size(val, HORIZONTAL_ALIGNMENT_LEFT, -1, 20)
-			draw_string(f, c + Vector2(-ts3.x * 0.5, r * 0.78), val, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
+			var ts3: Vector2 = f.get_string_size(val, HORIZONTAL_ALIGNMENT_LEFT, -1, f20)
+			draw_string(f, c + Vector2(-ts3.x * 0.5, r * 0.78), val, HORIZONTAL_ALIGNMENT_LEFT, -1, f20, Color.WHITE)
 		var na: float = _ang(_shown)
 		var nd := Vector2(cos(na), sin(na))
 		var side := Vector2(-nd.y, nd.x)
@@ -756,6 +765,21 @@ func _apply_world(seed_v: int = 0, focus_x: float = 0.0) -> void:
 	PhysicsServer2D.area_set_param(get_world_2d().space, PhysicsServer2D.AREA_PARAM_GRAVITY, 980.0 * float(md["gravity"]))
 	terrain.reseed(seed_v if seed_v != 0 else randi(), focus_x)
 	_set_sky_mode(String(md["sky"]))
+	_apply_mountains(md)
+
+
+## Haritaya özel dağ renkleri (çölde kum rengi, kutupta karlı)
+func _apply_mountains(md: Dictionary) -> void:
+	var cols: Array = md.get("mountains", [])
+	var i_m: int = 0
+	for mt in _mountains:
+		if mt is Polygon2D:
+			var poly := mt as Polygon2D
+			if not poly.has_meta("renk"):
+				poly.set_meta("renk", poly.color)
+			if not cols.is_empty():
+				poly.color = cols[mini(i_m, cols.size() - 1)]
+			i_m += 1
 
 
 ## Menüden harita seç
@@ -834,6 +858,7 @@ func _build_truck(at_x: float = 60.0) -> void:
 		truck.teardown()
 	var vid: String = active_vehicle()
 	truck.apply_model(TruckCatalog.by_id(vid), levels_of(vid))
+	truck.heat_k = float(TerrainGen.MAPS.get(map_id, {}).get("heat", 1.0))
 	var sx: float = at_x
 	truck.build(Vector2(sx, safe_drop_y(sx, 95.0)))
 	start_x = 60.0
@@ -1378,7 +1403,7 @@ func open_station() -> void:
 	_style_btn(_station_go, Color(0.15, 0.62, 0.3))
 	_station_go.pressed.connect(leave_station)
 	row.add_child(_station_go)
-	_portrait_scale(panel)
+	_portrait_scale(panel, 0.75)   # yük seçme paneli %25 küçük
 	_station_refresh()
 
 
@@ -1911,9 +1936,10 @@ func _build_ui() -> void:
 	brake_btn.arrow = -1
 	brake_btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	brake_btn.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	# pedallar %25 küçük (180x159)
 	brake_btn.offset_left = 28
-	brake_btn.offset_right = 268
-	brake_btn.offset_top = -240
+	brake_btn.offset_right = 208
+	brake_btn.offset_top = -187
 	brake_btn.offset_bottom = -28
 	root.add_child(brake_btn)
 
@@ -1923,17 +1949,17 @@ func _build_ui() -> void:
 	gas_btn.arrow = 1
 	gas_btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	gas_btn.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	gas_btn.offset_left = -268
+	gas_btn.offset_left = -208
 	gas_btn.offset_right = -28
-	gas_btn.offset_top = -240
+	gas_btn.offset_top = -187
 	gas_btn.offset_bottom = -28
 	root.add_child(gas_btn)
 	var hint := _label(root, "Ara gaz için\n3 kere bas", 17)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	hint.add_theme_color_override("font_color", Color(1.0, 0.92, 0.7))
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	hint.offset_left = -440
-	hint.offset_right = -280
+	hint.offset_left = -380
+	hint.offset_right = -220
 	hint.offset_top = -92
 	hint.offset_bottom = -30
 	_gas_hint = hint
@@ -1941,12 +1967,13 @@ func _build_ui() -> void:
 	# --- göstergeler (alt orta): hız ve hararet ---
 	var gauges := HBoxContainer.new()
 	gauges.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	gauges.offset_left = -180
-	gauges.offset_right = 180
-	gauges.offset_top = -186
+	# göstergeler %25 küçük
+	gauges.offset_left = -136
+	gauges.offset_right = 136
+	gauges.offset_top = -146
 	gauges.offset_bottom = -16
 	gauges.alignment = BoxContainer.ALIGNMENT_CENTER
-	gauges.add_theme_constant_override("separation", 20)
+	gauges.add_theme_constant_override("separation", 14)
 	gauges.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(gauges)
 	speed_gauge = Gauge.new()
@@ -1954,7 +1981,7 @@ func _build_ui() -> void:
 	speed_gauge.unit = "km/s"
 	speed_gauge.max_v = 120.0
 	speed_gauge.major = 6
-	speed_gauge.custom_minimum_size = Vector2(170, 170)
+	speed_gauge.custom_minimum_size = Vector2(128, 128)
 	speed_gauge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	gauges.add_child(speed_gauge)
 	heat_gauge = Gauge.new()
@@ -1963,7 +1990,7 @@ func _build_ui() -> void:
 	heat_gauge.red_from = 80.0
 	heat_gauge.major = 4
 	heat_gauge.labels = ["S", "", "", "", "H"]
-	heat_gauge.custom_minimum_size = Vector2(150, 150)
+	heat_gauge.custom_minimum_size = Vector2(112, 112)
 	heat_gauge.size_flags_vertical = Control.SIZE_SHRINK_END
 	heat_gauge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	gauges.add_child(heat_gauge)
@@ -1971,10 +1998,10 @@ func _build_ui() -> void:
 	turbo_btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# turbo solda, fren pedalının üstünde
 	turbo_btn.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	turbo_btn.offset_left = 68
-	turbo_btn.offset_right = 228
-	turbo_btn.offset_top = -420
-	turbo_btn.offset_bottom = -260
+	turbo_btn.offset_left = 38
+	turbo_btn.offset_right = 198
+	turbo_btn.offset_top = -360
+	turbo_btn.offset_bottom = -200
 	root.add_child(turbo_btn)
 	_gauges = gauges
 	_hud_nodes = [top, warn_lbl, brake_btn, gas_btn, gauges, turbo_btn, zone_lbl, _gas_hint]
@@ -2286,7 +2313,7 @@ func open_settings() -> void:
 
 ## Dikey ekranda pencere küçük kalıyordu: dikeyde %50 büyüt (yatayda aynı kalır).
 ## Kapsayıcılar (CenterContainer) çocuğun ölçeğini sıfırladığı için, varsa kapsayıcının kendisi büyütülür.
-func _portrait_scale(panel: Control) -> void:
+func _portrait_scale(panel: Control, base: float = 1.0) -> void:
 	var target: Control = panel
 	var bottom: bool = true
 	if panel.get_parent() is CenterContainer:
@@ -2296,9 +2323,9 @@ func _portrait_scale(panel: Control) -> void:
 		if not is_instance_valid(panel) or not is_instance_valid(target):
 			return
 		var vs: Vector2 = get_viewport().get_visible_rect().size
-		var k: float = 1.5 if vs.y > vs.x else 1.0
-		if k > 1.0 and panel.size.x > 0.0:
-			k = maxf(1.0, minf(k, (vs.x - 24.0) / panel.size.x))   # ekrandan taşmasın
+		var k: float = base * (1.5 if vs.y > vs.x else 1.0)
+		if k > base and panel.size.x > 0.0:
+			k = maxf(base, minf(k, (vs.x - 24.0) / panel.size.x))   # ekrandan taşmasın
 		target.pivot_offset = Vector2(target.size.x * 0.5, target.size.y if bottom else target.size.y * 0.5)
 		target.scale = Vector2(k, k)
 	panel.resized.connect(fit)
@@ -2621,16 +2648,18 @@ func _set_sky_mode(m: String) -> void:
 		return
 	var space: bool = m != ""
 	if _cloud_layer:
-		_cloud_layer.visible = not space
+		_cloud_layer.visible = not space or m == "volkan"
 	var i_m: int = 0
 	for mt in _mountains:
 		if mt is Polygon2D:
 			var poly := mt as Polygon2D
 			if not poly.has_meta("renk"):
 				poly.set_meta("renk", poly.color)
-			poly.visible = m != "uzay"
+			poly.visible = m != "uzay" and m != "maden"
 			if m == "ay":
 				poly.color = Color(0.3, 0.31, 0.35) if i_m == 0 else Color(0.42, 0.42, 0.45)
+			elif m == "volkan":
+				poly.color = Color(0.16, 0.08, 0.08) if i_m == 0 else Color(0.24, 0.12, 0.1)
 			else:
 				poly.color = poly.get_meta("renk")
 			i_m += 1
@@ -2697,15 +2726,19 @@ func _build_space_objects(sky_layer: CanvasLayer) -> void:
 
 func _update_space_sky() -> void:
 	var vp: Vector2 = get_viewport().get_visible_rect().size
-	var top: Color = Color(0.0, 0.0, 0.02) if _sky_mode == "ay" else Color(0.03, 0.0, 0.08)
-	var bot: Color = Color(0.05, 0.06, 0.12) if _sky_mode == "ay" else Color(0.16, 0.05, 0.28)
+	var top: Color = {"ay": Color(0.0, 0.0, 0.02), "volkan": Color(0.18, 0.03, 0.02), "maden": Color(0.04, 0.03, 0.02)}.get(_sky_mode, Color(0.03, 0.0, 0.08))
+	var bot: Color = {"ay": Color(0.05, 0.06, 0.12), "volkan": Color(0.75, 0.25, 0.08), "maden": Color(0.16, 0.12, 0.09)}.get(_sky_mode, Color(0.16, 0.05, 0.28))
 	_sky_grad.set_color(0, top)
 	_sky_grad.set_color(1, bot)
 	RenderingServer.set_default_clear_color(bot)
-	_modulate.color = Color(0.95, 0.96, 1.0) if _sky_mode == "ay" else Color(0.92, 0.88, 1.0)
+	_modulate.color = {"ay": Color(0.95, 0.96, 1.0), "volkan": Color(1.0, 0.86, 0.8), "maden": Color(0.8, 0.76, 0.7)}.get(_sky_mode, Color(0.92, 0.88, 1.0))
+	if _cloud_layer and _sky_mode == "volkan":
+		_cloud_layer.modulate = Color(0.35, 0.25, 0.25)   # kül bulutları
+	elif _cloud_layer:
+		_cloud_layer.modulate = Color(1, 1, 1)
 	for m in _mountains:
 		m.modulate = Color(1, 1, 1)
-	_stars.modulate.a = 1.0
+	_stars.modulate.a = 1.0 if (_sky_mode == "ay" or _sky_mode == "uzay") else 0.0
 	_sun.visible = false
 	_moon.visible = false
 	if _earth:

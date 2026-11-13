@@ -64,6 +64,18 @@ const ROADS := {
 	"krater": {"name": "KRATER ALANI", "friction": 0.75, "bumps": 1.3, "amp": 1.2, "feat": 1.25, "surface": Color(0.6, 0.6, 0.63), "under": Color(0.4, 0.4, 0.43)},
 	# Uzay
 	"uzay": {"name": "IŞIK YOLU", "friction": 1.05, "bumps": 0.2, "amp": 1.0, "feat": 1.0, "surface": Color(0.3, 0.95, 1.0), "under": Color(0.3, 0.1, 0.5)},
+	# Çöl
+	"kum": {"name": "KUM YOLU", "friction": 0.7, "bumps": 0.6, "amp": 1.1, "feat": 1.0, "surface": Color(0.94, 0.8, 0.52), "under": Color(0.8, 0.63, 0.37)},
+	"cakil": {"name": "ÇÖL PATİKASI", "friction": 0.95, "bumps": 1.0, "amp": 0.9, "feat": 1.0, "surface": Color(0.82, 0.6, 0.38), "under": Color(0.62, 0.43, 0.26)},
+	# Kutup
+	"buz": {"name": "BUZ YOLU", "friction": 0.24, "bumps": 0.3, "amp": 0.8, "feat": 0.9, "surface": Color(0.78, 0.92, 1.0), "under": Color(0.52, 0.72, 0.9)},
+	"buzul": {"name": "BUZUL", "friction": 0.42, "bumps": 0.9, "amp": 1.2, "feat": 1.1, "surface": Color(0.96, 0.98, 1.0), "under": Color(0.7, 0.82, 0.93)},
+	# Volkan
+	"bazalt": {"name": "BAZALT YOLU", "friction": 1.0, "bumps": 1.0, "amp": 1.15, "feat": 1.2, "surface": Color(0.27, 0.23, 0.23), "under": Color(0.15, 0.11, 0.1)},
+	"kul": {"name": "KÜL TARLASI", "friction": 0.66, "bumps": 0.8, "amp": 1.0, "feat": 1.0, "surface": Color(0.42, 0.4, 0.4), "under": Color(0.26, 0.23, 0.22)},
+	# Maden
+	"maden": {"name": "MADEN GALERİSİ", "friction": 0.9, "bumps": 1.1, "amp": 0.9, "feat": 1.1, "surface": Color(0.45, 0.38, 0.3), "under": Color(0.27, 0.21, 0.16)},
+	"ray": {"name": "RAYLI GEÇİT", "friction": 1.05, "bumps": 0.4, "amp": 0.7, "feat": 0.8, "surface": Color(0.36, 0.34, 0.33), "under": Color(0.2, 0.18, 0.16)},
 	"meteor": {"name": "METEOR KUŞAĞI", "friction": 0.95, "bumps": 1.1, "amp": 1.15, "feat": 1.2, "surface": Color(0.95, 0.4, 1.0), "under": Color(0.25, 0.08, 0.4)},
 }
 
@@ -85,8 +97,42 @@ const MAPS := {
 	"uzay": {"name": "Uzay Yolu", "desc": "Yıldızların arasında ışık yolu. Rampalar, meteorlar, düşük yer çekimi.",
 		"roads": ["uzay", "meteor"], "amp": 1.2, "bumps": 0.9, "feat": 1.2, "feats": ["none", "ramp", "steep", "valley", "bumps"],
 		"gravity": 0.55, "sky": "uzay", "station": "UZAY İSTASYONU", "price": 600, "tint": false},
+	"col": {"name": "Çöl Yolu", "desc": "Kum tepeleri ve kayalık patikalar. Sıcak: motor çabuk hararet yapar.",
+		"roads": ["kum", "cakil"], "amp": 1.0, "bumps": 0.9, "feat": 1.0, "feats": ["none", "bumps", "steep", "valley", "ramp"],
+		"gravity": 1.0, "sky": "", "station": "VAHA", "price": 200, "tint": false, "heat": 1.6,
+		"mountains": [Color(0.86, 0.68, 0.46), Color(0.76, 0.56, 0.34)]},
+	"buzul": {"name": "Kutup Buzulu", "desc": "Buz gibi kaygan yollar. Fren tutmaz, yük kayar!",
+		"roads": ["buz", "buzul"], "amp": 0.95, "bumps": 0.8, "feat": 1.0, "feats": ["none", "bumps", "valley", "steep", "rocky"],
+		"gravity": 1.0, "sky": "", "station": "KUTUP ÜSSÜ", "price": 350, "tint": false, "heat": 0.6,
+		"mountains": [Color(0.84, 0.91, 0.99), Color(0.7, 0.81, 0.94)]},
+	"volkan": {"name": "Volkan Yolu", "desc": "Lav gölleri, kül tarlaları, dik bazalt yamaçlar. Kıpkırmızı gök.",
+		"roads": ["bazalt", "kul"], "amp": 1.25, "bumps": 1.0, "feat": 1.25, "feats": ["none", "ramp", "steep", "valley", "rocky", "bumps"],
+		"gravity": 1.0, "sky": "volkan", "station": "GÖZLEM ÜSSÜ", "price": 450, "tint": false, "heat": 1.8},
+	"maden": {"name": "Maden Ocağı", "desc": "Yerin altında karanlık galeriler. Farların tek ışık.",
+		"roads": ["maden", "ray"], "amp": 0.85, "bumps": 1.0, "feat": 1.15, "feats": ["none", "bumps", "steep", "valley", "rocky"],
+		"gravity": 1.0, "sky": "maden", "station": "MADEN İSTASYONU", "price": 500, "tint": false, "heat": 1.2},
 }
 const MAP_ZONES := {
+	"col": [
+		[Color(0.96, 0.84, 0.56), Color(0.86, 0.66, 0.41), Color(0.66, 0.46, 0.28)],
+		[Color(0.92, 0.74, 0.46), Color(0.8, 0.56, 0.34), Color(0.6, 0.38, 0.22)],
+		[Color(0.98, 0.88, 0.64), Color(0.88, 0.7, 0.46), Color(0.7, 0.5, 0.3)],
+	],
+	"buzul": [
+		[Color(0.97, 0.99, 1.0), Color(0.72, 0.82, 0.92), Color(0.5, 0.6, 0.74)],
+		[Color(0.88, 0.95, 1.0), Color(0.6, 0.74, 0.88), Color(0.4, 0.52, 0.68)],
+		[Color(0.95, 0.97, 1.0), Color(0.66, 0.76, 0.86), Color(0.45, 0.55, 0.66)],
+	],
+	"volkan": [
+		[Color(1.0, 0.45, 0.12), Color(0.24, 0.15, 0.13), Color(0.13, 0.06, 0.05)],
+		[Color(0.95, 0.3, 0.08), Color(0.2, 0.12, 0.11), Color(0.1, 0.05, 0.04)],
+		[Color(1.0, 0.6, 0.2), Color(0.28, 0.18, 0.15), Color(0.15, 0.08, 0.06)],
+	],
+	"maden": [
+		[Color(0.55, 0.46, 0.36), Color(0.33, 0.27, 0.21), Color(0.18, 0.14, 0.11)],
+		[Color(0.5, 0.44, 0.38), Color(0.3, 0.26, 0.22), Color(0.16, 0.13, 0.11)],
+		[Color(0.6, 0.5, 0.36), Color(0.36, 0.28, 0.2), Color(0.2, 0.15, 0.11)],
+	],
 	"sehir": [
 		[Color(0.42, 0.72, 0.3), Color(0.45, 0.33, 0.21), Color(0.33, 0.24, 0.15)],
 		[Color(0.58, 0.68, 0.28), Color(0.5, 0.37, 0.23), Color(0.36, 0.26, 0.16)],
@@ -788,6 +834,35 @@ func _build_road_decor(root: Node2D, x0: float, top: PackedVector2Array, ci: int
 			"regolit", "krater":
 				if r.randf() < (0.1 if rk == "regolit" else 0.22):
 					_build_crater(root, p0, r)
+			"kum", "cakil":
+				if r.randf() < (0.06 if rk == "kum" else 0.1):
+					_build_cactus(root, p0, r)
+				if rk == "cakil" and r.randf() < 0.1:
+					_build_rock(root, p0 + Vector2(0, 4), r)
+			"buz", "buzul":
+				if r.randf() < 0.07:
+					_build_ice(root, p0, r)
+				if rk == "buzul" and k % 4 == 0:
+					var drift2 := Polygon2D.new()
+					var w3: float = r.randf_range(16.0, 34.0)
+					drift2.polygon = PackedVector2Array([Vector2(-w3, 0), Vector2(-w3 * 0.3, -9), Vector2(w3 * 0.4, -7), Vector2(w3, 0)])
+					drift2.position = p0 + Vector2(0, 3)
+					drift2.color = Color(1, 1, 1)
+					root.add_child(drift2)
+			"bazalt", "kul":
+				if r.randf() < (0.07 if rk == "bazalt" else 0.04):
+					_build_lava(root, p0, r)
+				if rk == "bazalt" and r.randf() < 0.12:
+					_build_rock(root, p0 + Vector2(0, 4), r)
+			"maden", "ray":
+				if k % 9 == 0:
+					_build_mine_frame(root, p0)
+				if rk == "ray" and k + 1 < top.size():
+					var rail3 := Line2D.new()
+					rail3.points = PackedVector2Array([top[k] + Vector2(0, 2), top[k + 1] + Vector2(0, 2)])
+					rail3.width = 3.0
+					rail3.default_color = Color(0.62, 0.6, 0.6)
+					root.add_child(rail3)
 			"uzay", "meteor":
 				if k % 6 == 0:
 					var beacon := Line2D.new()
@@ -811,6 +886,103 @@ func _build_road_decor(root: Node2D, x0: float, top: PackedVector2Array, ci: int
 				if r.randf() < 0.05:
 					_build_crystal(root, p0, r)
 		k += 1
+
+
+func _build_cactus(root: Node2D, p: Vector2, r: RandomNumberGenerator) -> void:
+	var c := Node2D.new()
+	c.position = p + Vector2(0, 4)
+	c.z_index = -2
+	root.add_child(c)
+	var h: float = r.randf_range(44.0, 90.0)
+	var col := Color(0.28, 0.55, 0.3)
+	var trunk := Line2D.new()
+	trunk.points = PackedVector2Array([Vector2(0, 0), Vector2(0, -h)])
+	trunk.width = 14.0
+	trunk.default_color = col
+	trunk.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	trunk.end_cap_mode = Line2D.LINE_CAP_ROUND
+	c.add_child(trunk)
+	for side in [-1.0, 1.0]:
+		if r.randf() < 0.75:
+			var y0: float = -h * r.randf_range(0.35, 0.6)
+			var arm := Line2D.new()
+			arm.points = PackedVector2Array([Vector2(0, y0), Vector2(16.0 * side, y0), Vector2(16.0 * side, y0 - r.randf_range(14.0, 26.0))])
+			arm.width = 9.0
+			arm.default_color = col.darkened(0.08)
+			arm.end_cap_mode = Line2D.LINE_CAP_ROUND
+			arm.joint_mode = Line2D.LINE_JOINT_ROUND
+			c.add_child(arm)
+
+
+func _build_ice(root: Node2D, p: Vector2, r: RandomNumberGenerator) -> void:
+	for q in range(r.randi_range(2, 4)):
+		var spike := Polygon2D.new()
+		var h: float = r.randf_range(22.0, 58.0)
+		var w: float = r.randf_range(7.0, 13.0)
+		spike.polygon = PackedVector2Array([Vector2(-w, 0), Vector2(r.randf_range(-4, 4), -h), Vector2(w, 0)])
+		spike.position = p + Vector2(float(q) * 12.0 - 14.0, 4)
+		spike.color = Color(0.72, 0.9, 1.0, 0.9)
+		spike.z_index = -2
+		root.add_child(spike)
+
+
+func _build_lava(root: Node2D, p: Vector2, r: RandomNumberGenerator) -> void:
+	var w: float = r.randf_range(26.0, 54.0)
+	var glow := Polygon2D.new()
+	var pts := PackedVector2Array()
+	for q in range(14):
+		var a: float = TAU * float(q) / 14.0
+		pts.append(Vector2(cos(a) * w, sin(a) * w * 0.22))
+	glow.polygon = pts
+	glow.position = p + Vector2(0, 6)
+	glow.color = Color(1.0, 0.42, 0.08)
+	root.add_child(glow)
+	var core := Polygon2D.new()
+	core.polygon = pts
+	core.scale = Vector2(0.6, 0.6)
+	core.position = p + Vector2(0, 6)
+	core.color = Color(1.0, 0.85, 0.3)
+	root.add_child(core)
+
+
+func _build_mine_frame(root: Node2D, p: Vector2) -> void:
+	var f := Node2D.new()
+	f.position = p
+	f.z_index = -2
+	root.add_child(f)
+	var wood := Color(0.42, 0.28, 0.16)
+	for x in [-60.0, 60.0]:
+		var post := Line2D.new()
+		post.points = PackedVector2Array([Vector2(x, 4), Vector2(x, -190)])
+		post.width = 12.0
+		post.default_color = wood
+		f.add_child(post)
+	var beam := Line2D.new()
+	beam.points = PackedVector2Array([Vector2(-72, -190), Vector2(72, -190)])
+	beam.width = 14.0
+	beam.default_color = wood.darkened(0.15)
+	f.add_child(beam)
+	var wire := Line2D.new()
+	wire.points = PackedVector2Array([Vector2(0, -184), Vector2(0, -150)])
+	wire.width = 2.0
+	wire.default_color = Color(0.2, 0.2, 0.2)
+	f.add_child(wire)
+	var bulb := Polygon2D.new()
+	var bp := PackedVector2Array()
+	for q in range(10):
+		var a: float = TAU * float(q) / 10.0
+		bp.append(Vector2(cos(a), sin(a)) * 7.0 + Vector2(0, -144))
+	bulb.polygon = bp
+	bulb.color = Color(1.0, 0.85, 0.45)
+	f.add_child(bulb)
+	var halo := Polygon2D.new()
+	var hp := PackedVector2Array()
+	for q in range(16):
+		var a2: float = TAU * float(q) / 16.0
+		hp.append(Vector2(cos(a2), sin(a2)) * 46.0 + Vector2(0, -144))
+	halo.polygon = hp
+	halo.color = Color(1.0, 0.8, 0.4, 0.12)
+	f.add_child(halo)
 
 
 func _build_lamp(root: Node2D, p: Vector2) -> void:

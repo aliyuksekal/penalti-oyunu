@@ -718,7 +718,7 @@ func _shots() -> void:
 	# yeni haritalar ve büyük araçlar
 	main.dev_mode = true
 	main.day_t = 0.2
-	for pair in [["sehir", "tir"], ["otobus", "uzunyol"], ["ay", "mamut"], ["uzay", "kirkayak"], ["koy", "mamut"]]:
+	for pair in [["sehir", "tir"], ["otobus", "uzunyol"], ["ay", "mamut"], ["uzay", "kirkayak"], ["col", "bozkurt"], ["buzul", "titan"], ["volkan", "dagkecisi"], ["maden", "kartal"], ["koy", "mamut"]]:
 		main.open_menu()
 		main.selected = String(pair[1])
 		main.select_map(String(pair[0]))

@@ -54,7 +54,7 @@ static func all() -> Array:
 			"price": 14000, "kind": "tir", "cab": "cabover", "wheel_r": 28.0, "axles": [-52.0, 78.0], "trailer_len": 440.0, "trailer_mass": 0.85, "zoom": 0.66,
 			"body": Color.html("#f4f6f9"), "accent": Color.html("#1e5fb4"), "bed": Color.html("#59606c"), "rim": Color.html("#dfe3e8"),
 			"power": 3.6, "grip": 1.3, "fuel": 3.0, "stiff": 1.5, "damp": 1.6, "speed": 1.3, "mass": 1.7,
-			"tread": "road", "drive": "rwd", "smooth": 0.82, "pay": 0.65, "extras": ["stacks2", "stripe", "visor"]},
+			"tread": "road", "drive": "rwd", "smooth": 0.92, "pay": 0.65, "extras": ["stacks2", "stripe", "visor"]},
 		# ---------------- OTOBÜSLER (yolcu taşır; koltuk sayısı gövde uzunluğundan) ----------------
 		{"id": "minibus", "name": "Dolmuş Minibüs", "desc": "Üstü açık şehir turu minibüsü. 9 yolcu, her yokuşa tırmanır.",
 			"price": 0, "kind": "bus", "cab": "cabover", "wheel_r": 26.0, "ext": -40.0, "axles": [-80.0, 80.0], "zoom": 0.92,

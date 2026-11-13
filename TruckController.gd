@@ -49,6 +49,7 @@ const UPGRADE_STEP := {"engine": 0.12, "stiffness": 0.10, "damping": 0.15, "grip
 @export var fuel_use_idle: float = 0.35          # litre/sn rölanti
 @export var fuel_use_gas: float = 1.5            # litre/sn tam gaz (ek)
 @export var heat_rise: float = 3.2               # tam gazda hararet artışı (%/sn)
+var heat_k: float = 1.0   # haritaya göre: çölde/volkanda motor daha çabuk ısınır, kutupta yavaş
 @export var heat_fall: float = 11.0              # gaz bırakınca soğuma (%/sn)
 @export var overheat_cooldown: float = 3.0       # aşırı ısınınca motorun kesik kaldığı süre (sn)
 @export var base_zoom: float = 1.35
@@ -427,7 +428,7 @@ func _build_trailer(origin: Vector2) -> void:
 	trailer.center_of_mass_mode = RigidBody2D.CENTER_OF_MASS_MODE_CUSTOM
 	trailer.center_of_mass = Vector2(-L * 0.5, 4)
 	var tm := PhysicsMaterial.new()
-	tm.friction = 0.6
+	tm.friction = 0.38   # kaygan dorse: tırda da yük kayıp düşebilsin
 	trailer.physics_material_override = tm
 	add_child(trailer)
 	_parts.append(trailer)
@@ -435,7 +436,7 @@ func _build_trailer(origin: Vector2) -> void:
 	bed_left = -L + 10.0
 	bed_right = 16.0
 	bed_floor = -14.0
-	bed_wall_top = -64.0
+	bed_wall_top = -44.0   # alçak arka kapak: sert frende/yokuşta yük devrilebilir
 	# döşeme + alın + arka kapak (yükler dorsenin içinde kalsın)
 	_add_collision(trailer, PackedVector2Array([Vector2(-L, -14), Vector2(28, -14), Vector2(28, 6), Vector2(-L, 6)]))
 	_add_collision(trailer, PackedVector2Array([Vector2(bed_right, -96), Vector2(28, -96), Vector2(28, -14), Vector2(bed_right, -14)]))
@@ -578,7 +579,7 @@ func _update_engine(delta: float, throttle: float) -> void:
 			overheated = false
 			heat = 70.0
 	elif throttle > 0.5:
-		heat += heat_rise * delta
+		heat += heat_rise * heat_k * delta
 		if heat >= 100.0:
 			heat = 100.0
 			overheated = true
@@ -619,7 +620,7 @@ func _update_turbo(delta: float) -> void:
 	if turbo_active:
 		_turbo_t -= delta
 		body.apply_central_force(body.global_transform.x * body.mass * turbo_push)
-		heat = minf(heat + heat_rise * 0.6 * delta, 99.0)
+		heat = minf(heat + heat_rise * heat_k * 0.6 * delta, 99.0)
 		fuel = maxf(fuel - fuel_use_gas * 0.6 * delta, 0.0)
 		if _turbo_t <= 0.0 or overheated or fuel <= 0.0:
 			turbo_active = false

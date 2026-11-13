@@ -216,7 +216,7 @@ static func paint_trailer(parent: Node2D, d: Dictionary, L: float, wheel_r: floa
 	_grad(parent, _rect(16, -96, 28, -14), acc.lightened(0.15), acc.darkened(0.3))
 	for yy in [-80.0, -62.0, -44.0, -28.0]:
 		_line(parent, [Vector2(17, yy), Vector2(27, yy)], 2.0, acc.darkened(0.5))
-	_grad(parent, _rect(-L, -64, -L + 10.0, -14), bed_c.lightened(0.1), bed_c.darkened(0.3))
+	_grad(parent, _rect(-L, -44, -L + 10.0, -14), bed_c.lightened(0.1), bed_c.darkened(0.3))
 	# yan dikmeler (yük bağlama direkleri)
 	var x: float = -L + 52.0
 	while x < 0.0:
