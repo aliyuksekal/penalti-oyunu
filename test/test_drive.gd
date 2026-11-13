@@ -450,6 +450,8 @@ func _alltrucks() -> void:
 			var rot: float = main.truck.body.global_rotation
 			_key(rot > -0.7)
 		_key(false)
+		if main.truck.trailer != null:
+			print("  ok  (bilgi) tır: hız %.0f, dönüş %.2f, dorse %.2f, kurtarma %d, tekerler yerde %s, bitti=%s %s" % [main.truck.body.linear_velocity.x, main.truck.body.global_rotation, main.truck.trailer.global_rotation, main._recoveries, str(main.truck.wheels_on_ground()), str(main.game_over), main.end_reason])
 		var m: int = int(main._distance_m())
 		_check(m > 60 or main.game_over, "%s ilerledi: %d m" % [id, m])
 		_check(main.truck.rigid_parts().size() == main.truck.wheels.size() + main.truck.trailer_wheels.size() + (2 if main.truck.trailer != null else 1), "%s parçaları tamam" % id)
