@@ -1,0 +1,11 @@
+total 724728
+drwxr-xr-x  4 runner runner      4096 Nov 13 10:50 .
+drwxr-xr-x 13 runner runner      4096 Nov 13 10:47 ..
+-rw-r--r--  1 runner runner         0 Nov 13 10:36 .gdignore
+-rw-r--r--  1 runner runner      2108 Nov 13 10:50 RELEASE_NOTES.md
+drwxr-xr-x  2 runner runner      4096 Nov 13 10:50 device
+-rw-r--r--  1 runner runner  84545126 Nov 13 10:41 drop-zero.aab
+-rw-r--r--  1 runner runner  56271909 Nov 13 10:42 drop-zero.apk
+-rw-r--r--  1 runner runner  28444887 Nov 13 10:41 mapping.txt
+-rw-r--r--  1 runner runner 572827534 Nov 13 10:47 native-debug-symbols.zip
+drwxr-xr-x  2 runner runner      4096 Nov 13 10:38 screenshots

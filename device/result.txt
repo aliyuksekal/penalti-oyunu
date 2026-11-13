@@ -1,0 +1,13 @@
+ABI listesi: x86_64,arm64-v8a
+Android: 15 (SDK 35)
+AAB doğrulama: OK
+AAB evrensel APK kurulumu: Success
+Release APK kurulumu: Success
+BAŞLA tuşu bulundu: 53 560
+GAZ pedalı bulundu: 290 561
+Oyun ön planda (reklama yanlışlıkla dokunulmadı)
+[reklam] banner 320x50 px, pencere 320x640, oyun ekranı 1280x2560 -> 1280x200
+[reklam] banner istendi
+[reklam] banner yüklendi: 320x50 px
+Uygulama çalışıyor (pid 3526)
+SONUÇ: BAŞARILI

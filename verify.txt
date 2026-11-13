@@ -1,0 +1,19 @@
+package: name='com.benim.agiryuk' versionCode='83' versionName='1.0.73' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+targetSdkVersion:'36'
+uses-permission: name='android.permission.INTERNET'
+uses-permission: name='android.permission.AD_ID'
+uses-permission: name='android.permission.ACCESS_NETWORK_STATE'
+uses-permission: name='android.permission.READ_BASIC_PHONE_STATE'
+uses-permission: name='com.google.android.gms.permission.AD_ID'
+uses-permission: name='android.permission.WAKE_LOCK'
+uses-permission: name='android.permission.FOREGROUND_SERVICE'
+uses-permission: name='com.benim.agiryuk.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'
+application-label:'Drop Zero'
+native-code: 'arm64-v8a' 'armeabi-v7a'
+Signer #1 certificate DN: CN=temporary, O=matali, C=TR
+Signer #1 certificate SHA-256 digest: b3ab54f0e87df5de9a35bfff77b006e749abab404813c5c8fd3dc0a3effc9982
+Signer #1 certificate SHA-1 digest: 65910e37f6fe7f80e9c943faa7d2fa9b79e752bd
+Signer #1 certificate MD5 digest: 83ca87dab6d39241d7affc0d348a3c92
+16 KB hizalama: OK
+APK boyutu: 53 MB
+Re-run with the -verbose and -certs options for more details.
