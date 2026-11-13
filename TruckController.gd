@@ -84,7 +84,7 @@ var cargo_body: RigidBody2D         # yükün durduğu gövde (kamyonda gövde, 
 var trailer: RigidBody2D
 var trailer_wheels: Array[RigidBody2D] = []
 var _rest: Dictionary = {}          # parça -> gövdeye göre duruş (yeniden yerleştirmek için)
-const KINGPIN := Vector2(-46, -16)  # tır: dorsenin bağlandığı beşinci teker (çekici yerel)
+const KINGPIN := Vector2(-24, -16)  # tır: dorsenin bağlandığı beşinci teker (çekici yerel)
 
 var fuel: float = 100.0
 var heat: float = 0.0
@@ -375,15 +375,15 @@ func _set_spring(sp: DampedSpringJoint2D, load_n: float, instant: bool) -> void:
 
 
 ## Tır: çekici dorseye göre şaha kalkmasın / burnunu gömmesin. Pim açı sınırı fizikte
-## yumuşak kaldığı için çekici dorseye göre 0.3 radyandan fazla dönerse geri itilir.
+## yumuşak kaldığı için çekici dorseye göre 0.22 radyandan fazla dönerse geri itilir.
 func _hold_articulation(delta: float) -> void:
 	if trailer == null:
 		return
 	var rel: float = wrapf(body.global_rotation - trailer.global_rotation, -PI, PI)
-	var lim: float = 0.3
+	var lim: float = 0.22
 	if absf(rel) <= lim:
 		return
-	var push: float = (absf(rel) - lim) * 14.0 * delta * -signf(rel)
+	var push: float = (absf(rel) - lim) * 45.0 * delta * -signf(rel)
 	body.angular_velocity += push
 	trailer.angular_velocity -= push * 0.35
 	if rel * body.angular_velocity > 0.0:

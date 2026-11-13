@@ -80,8 +80,8 @@ static func paint_body(parent: Node2D, d: Dictionary, wheel_r: float, wheel_y: f
 
 	if tir:
 		# beşinci teker (dorse bağlantı tablası)
-		_grad(parent, _round_rect(-76, -18, -16, -10, 3), Color(0.35, 0.36, 0.4), Color(0.12, 0.12, 0.14))
-		_poly(parent, _circle_at(Vector2(-46, -16), 5.0, 10), Color(0.75, 0.76, 0.8))
+		_grad(parent, _round_rect(-54, -18, 6, -10, 3), Color(0.35, 0.36, 0.4), Color(0.12, 0.12, 0.14))
+		_poly(parent, _circle_at(Vector2(-24, -16), 5.0, 10), Color(0.75, 0.76, 0.8))
 	else:
 		# kasa (üstü açık U) - üstte açık, altta koyu gölgeli boya
 		var bl: float = -108.0 - ext
@@ -376,7 +376,7 @@ static func build_preview(parent: Node2D, d: Dictionary) -> void:
 	var front: float = 130.0
 	var back: float = 130.0 + float(d.get("ext", 0.0))
 	if kind == "tir":
-		back = 46.0 + float(d.get("trailer_len", 420.0))
+		back = 24.0 + float(d.get("trailer_len", 420.0))
 	elif kind == "bus":
 		back = 160.0 + float(d.get("ext", 0.0))
 	var k: float = minf(1.0, 260.0 / (front + back))
@@ -384,7 +384,7 @@ static func build_preview(parent: Node2D, d: Dictionary) -> void:
 	root.position = Vector2((back - front) * 0.5 * k, 0)
 	if kind == "tir":
 		var tr := Node2D.new()
-		tr.position = Vector2(-46, -16)
+		tr.position = Vector2(-24, -16)
 		root.add_child(tr)
 		var L: float = float(d.get("trailer_len", 420.0))
 		paint_trailer(tr, d, L, r, wy + 16.0)
