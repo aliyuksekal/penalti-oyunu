@@ -10,3 +10,7 @@ export_credentials.cfg
 *.jks
 *.keystore
 /*.png
+# yerel Godot içe aktarma çıktıları (CI kendisi üretir)
+*.uid
+*.import
+addons/admob/downloads/
