@@ -186,6 +186,7 @@ jobs:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          DZ_SIFRE: ${{ secrets.DZ_IMZA_SIFRE }}
         run: |
           KS="$RUNNER_TEMP/upload.jks"
           # telefondan yapıştırırken eklenen boşluk / satır sonlarını temizle
@@ -199,7 +200,16 @@ jobs:
           ALIAS=$(printf '%s' "$KS_ALIAS" | tr -d ' \r\n\t')
           # alias geçerli bir ad değilse (boş, dosya içeriği vb.) varsayılan "upload"
           if ! printf '%s' "$ALIAS" | grep -Eq '^[A-Za-z0-9_.-]{1,64}$'; then ALIAS=upload; fi
-          if [ -n "$B64" ] && [ -n "$PASS" ]; then
+          DZ=$(printf '%s' "$DZ_SIFRE" | tr -d ' \r\n\t')
+          if [ -n "$DZ" ] && [ -f imza/dropzero-yukleme.jks.enc ]; then
+            # kalıcı yükleme anahtarı: depoda şifreli, şifresi DZ_IMZA_SIFRE gizlisinde
+            echo "::add-mask::$DZ"
+            P="$DZ" openssl enc -d -aes-256-cbc -pbkdf2 -iter 300000 -in imza/dropzero-yukleme.jks.enc -out "$KS" -pass env:P \
+              || { echo "::error::DZ_IMZA_SIFRE yanlış: şifreli anahtar açılamadı"; exit 1; }
+            PASS="$DZ"; ALIAS=upload
+            keytool -list -v -keystore "$KS" -storepass "$PASS" -alias "$ALIAS" 2>/dev/null | grep -E "Owner|SHA256" | head -2
+            echo "SIGNING=permanent" >> $GITHUB_ENV
+          elif [ -n "$B64" ] && [ -n "$PASS" ]; then
             echo "::add-mask::$PASS"
             printf '%s' "$B64" | base64 -d > "$KS" || { echo "::error::ANDROID_KEYSTORE_BASE64 çözülemedi (eksik/yanlış kopyalanmış olabilir)"; exit 1; }
             echo "Teşhis: base64 uzunluğu=${#B64}, şifre uzunluğu=${#PASS}, jks sha256=$(sha256sum "$KS" | cut -c1-16)"
