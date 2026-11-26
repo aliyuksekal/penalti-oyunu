@@ -1,0 +1,304 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+  ok  tosun yüklüyken düz duruyor (eğim -0.1°, yol 0.0°)
+  ok  tosun ilerledi: 221 m
+  ok  tosun parçaları tamam
+SONUÇ: tosun  221 m  yük=5/5  bitti=false 
+  ok  kartal yüklüyken düz duruyor (eğim -0.1°, yol 0.0°)
+  ok  kartal ilerledi: 253 m
+  ok  kartal parçaları tamam
+SONUÇ: kartal  253 m  yük=5/5  bitti=false 
+  ok  bozkurt yüklüyken düz duruyor (eğim -0.2°, yol 0.0°)
+  ok  bozkurt ilerledi: 242 m
+  ok  bozkurt parçaları tamam
+SONUÇ: bozkurt  242 m  yük=5/5  bitti=false 
+  ok  yildirim yüklüyken düz duruyor (eğim -0.1°, yol 0.0°)
+  ok  yildirim ilerledi: 278 m
+  ok  yildirim parçaları tamam
+SONUÇ: yildirim  278 m  yük=5/5  bitti=false 
+  ok  dagkecisi yüklüyken düz duruyor (eğim -0.1°, yol 0.0°)
+  ok  dagkecisi ilerledi: 265 m
+  ok  dagkecisi parçaları tamam
+SONUÇ: dagkecisi  265 m  yük=5/5  bitti=false 
+  ok  titan yüklüyken düz duruyor (eğim -0.0°, yol 0.0°)
+  ok  titan ilerledi: 307 m
+  ok  titan parçaları tamam
+SONUÇ: titan  307 m  yük=5/5  bitti=false 
+  ok  kirkayak yüklüyken düz duruyor (eğim 0.0°, yol 0.0°)
+  ok  kirkayak ilerledi: 260 m
+  ok  kirkayak parçaları tamam
+  ok  kirkayak: 3 aks, 10 yük
+SONUÇ: kirkayak  260 m  yük=10/10  bitti=false 
+  ok  mamut yüklüyken düz duruyor (eğim -0.0°, yol 0.0°)
+  ok  mamut ilerledi: 267 m
+  ok  mamut parçaları tamam
+  ok  mamut: 3 aks, 12 yük
+SONUÇ: mamut  267 m  yük=12/12  bitti=false 
+  ok  tir yüklüyken düz duruyor (eğim -0.4°, yol 0.0°)
+  ok  dorse düz duruyor (0.0°)
+  ok  (bilgi) tır: hız 1102, dönüş -0.10, dorse -0.15, kurtarma 0, tekerler yerde false, bitti=false 
+  ok  tir ilerledi: 251 m
+  ok  tir parçaları tamam
+  ok  dorse çekiciye bağlı (0 px)
+  ok  tır dorsesi çok yük alıyor: 26
+SONUÇ: tir  251 m  yük=25/26  bitti=false 
+  ok  minibus yüklüyken düz duruyor (eğim -0.1°, yol 0.0°)
+  ok  minibus ilerledi: 262 m
+  ok  minibus parçaları tamam
+SONUÇ: minibus  262 m  yük=7/7  bitti=false 
+  ok  otobus yüklüyken düz duruyor (eğim -0.3°, yol 0.0°)
+  ok  otobus ilerledi: 285 m
+  ok  otobus parçaları tamam
+SONUÇ: otobus  285 m  yük=7/7  bitti=false 
+  ok  luks yüklüyken düz duruyor (eğim -0.3°, yol 0.0°)
+  ok  luks ilerledi: 305 m
+  ok  luks parçaları tamam
+SONUÇ: luks  305 m  yük=7/7  bitti=false 
+  ok  uzunyol yüklüyken düz duruyor (eğim 0.1°, yol 0.0°)
+  ok  uzunyol ilerledi: 293 m
+  ok  uzunyol parçaları tamam
+SONUÇ: uzunyol  293 m  yük=7/7  bitti=false 
+WARNING: 8 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+  ok  PIN penceresi açıldı
+  ok  yanlış PIN reddedildi
+  ok  PIN penceresi açıldı
+  ok  PIN 4848 geliştirici modunu açtı
+  ok  minibus: 9 koltuk
+  ok  luks: 13 koltuk
+  ok  uzunyol: 18 koltuk
+  ok  otobüs köy yolunda da sürülebilir
+  ok  üstü açık otobüse 7 yolcu (gerçek kişi) bindi (13 yer)
+  ok  (bilgi) sakin sürüş: 304 m, yolcu 7/7, yerde 0
+  ok  normal sürüşte yolcular çoğunlukla yerinde (7/7)
+  ok  otogarda ücret alındı: +193
+  ok  otogarda 'YOLCU AL' tuşu
+  ok  yer sayısı kadar yolcu alındı (13)
+  ok  yolcular üst katta ayakta (13)
+  ok  (bilgi) sert düşüş: yolcu 13 -> 2, yolda yatan 11
+  ok  sert düşüşte yolcu düştü ve yolda görünüyor (13 -> 2)
+SONUÇ: otobüs bitti
+WARNING: 6 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 3 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+SONUÇ: durum=cargo neden=TÜM YÜKLER DÖKÜLDÜ t=1.7 panel=true
+WARNING: 12 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+  ok  teslimat süresi başladı: 105 sn
+  ok  Tosun arkadan itişli
+  ok  Titan 4x4
+  ok  kısa basış fren yaptı (737 -> 594 px/sn)
+  ok  uzun basış geri vitese geçti (1.7 sn içinde)
+  ok  geri vitesle geri gitti (-491 px)
+  ok  turbo anlık itiş verdi (119 -> 345 px/sn)
+  ok  turbo açıldı
+  ok  turbo alevi çıkıyor
+  turbo hız: 119 -> 1123 px/sn
+  ok  turbo bitti, yeniden doluyor
+  ok  gün ilerliyor (0.1511 -> 0.1553)
+  ok  gece: ay var, güneş yok
+  ok  gündüz: güneş var
+  ok  bölge adları
+  ok  2 basışta ara gaz yok
+  ok  3. hızlı basışta ara gaz verdi
+  ok  bırakıp tekrar basınca (3 basış olmadan) ara gaz yok
+  ok  bozulan fizik: altın yağmadı, kamyon geri kondu (x 6321)
+  ok  (bilgi) teslimat sonrası: durum=play bitti=false neden= yük=0 kurtarma=1 kayıt={ "cp": 2, "gold": 178, "seed": 3090906712, "truck": "tosun", "map": "koy", "fuel_ads": 0, "flips": 0, "delivered": 5 }
+  ok  istasyonda teslimat yapıldı
+  ok  ödül bir kez verildi ve sabit kaldı (+178)
+  ok  istasyonda kayıt alındı
+  ok  teslimattan sonra istasyonda bekliyor, kasa boş
+  ok  kamyon durdu, YÜKLE tuşu çıktı
+  ok  yük listesi açıldı (5 çeşit)
+  ok  dokundukça yüklendi: 3 x sandik = +72 altın
+  ok  kasa dolunca fazlası eklenmiyor (8)
+  ok  istasyondayken süre işlemiyor
+  ok  yola çıkıldı, 2 yük kasada
+  ok  kayıt şifreli (düz okunamıyor)
+ERROR: The MD5 sum of the decrypted file does not match the expected value. It could be that the file is corrupt, or that the provided decryption key is invalid.
+   at: open_and_parse (core/io/file_access_encrypted.cpp:113)
+   GDScript backtrace (most recent call first):
+       [0] _load (res://CargoAndGameManager.gd:3063)
+       [1] _controls (res://test/test_drive.gd:334)
+       [2] _wait (res://test/test_drive.gd:91)
+  ok  bozulan kayıt yedekten yüklendi
+  ok  devam edince istasyonda yük seçimi
+  ok  kaldığı yerden devam: bölge 2, altın 178
+  ok  kamyon son istasyonda
+  ok  hareket edemeyince sıkıştı sayıldı
+  ok  menüde 'reklam izle, 50 m geriden başla' var
+  ok  50 m geriden başladı (50 m), yük 6, yakıt korundu
+  ok  süre dolunca: TESLİMAT GECİKTİ
+SONUÇ: kontroller bitti
+WARNING: 2 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 1 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+t=0  x=0 m  hız=-0 km/s  yük=5  yakıt=100  hararet=0  altın=0  cp=1
+t=5  x=56 m  hız=60 km/s  yük=5  yakıt=91  hararet=16  altın=0  cp=1
+t=10  x=151 m  hız=71 km/s  yük=5  yakıt=82  hararet=32  altın=0  cp=1
+t=15  x=246 m  hız=70 km/s  yük=5  yakıt=72  hararet=48  altın=0  cp=1
+t=20  x=341 m  hız=69 km/s  yük=5  yakıt=63  hararet=64  altın=0  cp=1
+t=25  x=437 m  hız=67 km/s  yük=5  yakıt=54  hararet=80  altın=0  cp=1
+t=30  x=528 m  hız=62 km/s  yük=6  yakıt=97  hararet=45  altın=168  cp=2
+t=35  x=602 m  hız=47 km/s  yük=6  yakıt=88  hararet=61  altın=168  cp=2
+t=40  x=668 m  hız=48 km/s  yük=6  yakıt=79  hararet=77  altın=168  cp=2
+t=45  x=732 m  hız=51 km/s  yük=6  yakıt=69  hararet=93  altın=168  cp=2
+t=50  x=787 m  hız=22 km/s  yük=6  yakıt=64  hararet=85  altın=168  cp=2
+t=55  x=838 m  hız=46 km/s  yük=6  yakıt=55  hararet=85  altın=168  cp=2
+t=60  x=897 m  hız=40 km/s  yük=6  yakıt=47  hararet=98  altın=168  cp=2
+t=65  x=941 m  hız=41 km/s  yük=6  yakıt=41  hararet=78  altın=168  cp=2
+t=70  x=1006 m  hız=59 km/s  yük=6  yakıt=99  hararet=41  altın=378  cp=3
+SONUÇ: mesafe=1006 m  yük=6  teslimat=2  bitti=false 
+WARNING: 8 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+  ok  2000 altın -> 200 jeton (jeton=200, altın=0)
+  ok  ödüllü reklam +50 jeton (250)
+  ok  jeton yetmeyince kamyon alınmaz
+  ok  paket +300 jeton (550)
+  ok  Kartal alındı ve seçildi (jeton=50)
+  ok  kamyon yeniden kuruldu
+  ok  motor yükseltildi, 72 altın harcandı
+  ok  motor gücü arttı 80481 -> 90138
+  ok  yükseltme sadece o kamyona işledi
+  ok  kayıt geri yüklendi
+  ok  Kartal ile sürüş: 174 m
+  ok  geliştirici modu: Titan almadan seçildi
+  ok  geliştirici modu kapanınca sahip olunan kamyona dönüldü
+SONUÇ: ekonomi bitti
+WARNING: 6 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 3 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+  ok  reklamla kurtarma teklif edildi (flip)
+  ok  reklamla kamyon düzeltildi
+SONUÇ: durum=flip neden=ŞASİ HASARI t=7.0 panel=true
+WARNING: 6 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 3 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+  ok  reklamla kurtarma teklif edildi (fuel)
+  ok  1. reklam: depo %%10 doldu, oyun sürüyor
+SONUÇ: durum=fuel neden=YAKIT BİTTİ t=5.0 panel=true
+WARNING: 2 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 1 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+  ok  koy: yer çekimi 980
+  ok  koy: yollar haritaya ait
+  ok  koy: arazi sonlu
+  ok  koy: seçili kamyon her haritada sürülür
+  ok  koy: sürüldü 115 m, yük 5/5
+  ok  sehir: yer çekimi 980
+  ok  sehir: yollar haritaya ait
+  ok  sehir: arazi sonlu
+  ok  sehir: seçili kamyon her haritada sürülür
+  ok  sehir: sürüldü 119 m, yük 5/5
+  ok  otobus: yer çekimi 980
+  ok  otobus: yollar haritaya ait
+  ok  otobus: arazi sonlu
+  ok  otobus: seçili kamyon her haritada sürülür
+  ok  otobus: sürüldü 120 m, yük 5/5
+  ok  ay: yer çekimi 372
+  ok  ay: yollar haritaya ait
+  ok  ay: arazi sonlu
+  ok  ay: seçili kamyon her haritada sürülür
+  ok  ay: sürüldü 86 m, yük 5/5
+  ok  uzay: yer çekimi 539
+  ok  uzay: yollar haritaya ait
+  ok  uzay: arazi sonlu
+  ok  uzay: seçili kamyon her haritada sürülür
+  ok  uzay: sürüldü 99 m, yük 5/5
+  ok  col: yer çekimi 980
+  ok  col: yollar haritaya ait
+  ok  col: arazi sonlu
+  ok  col: seçili kamyon her haritada sürülür
+  ok  col: sürüldü 101 m, yük 5/5
+  ok  buzul: yer çekimi 980
+  ok  buzul: yollar haritaya ait
+  ok  buzul: arazi sonlu
+  ok  buzul: seçili kamyon her haritada sürülür
+  ok  buzul: sürüldü 64 m, yük 5/5
+  ok  volkan: yer çekimi 980
+  ok  volkan: yollar haritaya ait
+  ok  volkan: arazi sonlu
+  ok  volkan: seçili kamyon her haritada sürülür
+  ok  volkan: sürüldü 90 m, yük 5/5
+  ok  maden: yer çekimi 980
+  ok  maden: yollar haritaya ait
+  ok  maden: arazi sonlu
+  ok  maden: seçili kamyon her haritada sürülür
+  ok  maden: sürüldü 104 m, yük 5/5
+  ok  tır istasyonda durdu, yüklerken kaymadı (0.3 px)
+  ok  tırda parça başı ücret düşük (sandık 13)
+SONUÇ: haritalar bitti
+WARNING: 6 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 3 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+  ok  arazi kopuksuz (rampa inişi dahil) (32 px'te en büyük sıçrama 58 px)
+  ok  ilk 600 m engelsiz (kolay başlangıç)
+  kesimler (ilk 3 km): { "none": 10, "bumps": 2, "valley": 9, "ramp": 7, "rocky": 5, "steep": 7 }
+  ok  en az 4 farklı yol türü var
+  yol türleri: ["asfalt", "toprak", "orman", "kar", "dag", "camur"]
+  ok  ilk 500 m asfalt
+  ok  en az 5 yol türü çıkıyor (6)
+  ok  yük artıyor: 1. teslimat 5, 7. teslimat 6 parça ["tomruk", "tomruk", "tomruk", "cuval", "odun", "varil"]
+  ok  1. yük kasaya sığıyor (5 parça)
+  ok  2. yük kasaya sığıyor (6 parça)
+  ok  3. yük kasaya sığıyor (6 parça)
+  ok  4. yük kasaya sığıyor (7 parça)
+  ok  5. yük kasaya sığıyor (7 parça)
+  ok  6. yük kasaya sığıyor (6 parça)
+  ok  7. yük kasaya sığıyor (6 parça)
+  ok  8. yük kasaya sığıyor (7 parça)
+  ok  ileride engeller büyüyor (116 -> 991)
+  ok  ses kanalları kuruldu
+  ok  müzik kapatılabiliyor
+  ok  hız göstergesi: 60 km/s
+  ok  motor sesi çalıyor (perde 1.13)
+  ok  oyun müziği çalıyor
+  ok  duraklatma menüsü açıldı
+  ok  duraklayınca kamyon durdu
+  ok  devam edince oyun sürüyor
+  ok  egzoz dumanı çıkıyor
+SONUÇ: sistemler bitti
+WARNING: 6 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 3 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+  ok  GAZ pedalı basılı görünüyor
+  ok  dokunmatik gazla gidildi: 78 m
+  ok  parmak kalkınca gaz bırakıldı
+SONUÇ: dokunmatik bitti
+WARNING: 6 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 3 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
