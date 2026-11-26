@@ -167,7 +167,7 @@ func buy_pack(pack: Dictionary, on_success: Callable) -> void:
 		if watched:
 			on_success.call()
 			tokens_purchased.emit(int(pack["tokens"]))
-	_overlay("SATIN ALMA (TEST)", "%s: %d jeton\nTest modunda gerçek ödeme alınmaz." % [pack["name"], int(pack["tokens"])], 1.0, "ONAYLA", finish, true)
+	_overlay("SATIN ALMA (TEST)", tr("%s: %d jeton\nTest modunda gerçek ödeme alınmaz.") % [tr(pack["name"]), int(pack["tokens"])], 1.0, "ONAYLA", finish, true)
 
 
 # ---------------- gerçek SDK bağlantı noktaları ----------------

@@ -20,6 +20,7 @@ var _buttons: HBoxContainer
 var _continue: Button
 var _map_btn: Button
 var _logo_taps: int = 0
+var _panel_sb: StyleBoxFlat
 var _logo_tap_t: float = 0.0
 
 const C_PANEL := Color(0.07, 0.09, 0.13, 0.92)
@@ -29,6 +30,7 @@ const C_TOKEN := Color(0.35, 0.85, 1.0)
 
 
 func _ready() -> void:
+	Lang.changed.connect(refresh)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
@@ -95,7 +97,8 @@ func _ready() -> void:
 	panel.offset_top = 104
 	panel.offset_bottom = -14
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = C_PANEL
+	sb.bg_color = Lang.panel_color(0.92)
+	_panel_sb = sb
 	sb.set_corner_radius_all(20)
 	sb.content_margin_left = 16
 	sb.content_margin_right = 16
@@ -304,9 +307,9 @@ func _dev_dialog() -> void:
 func refresh() -> void:
 	if _content == null:
 		return
-	_gold_lbl.text = "ALTIN  %d" % manager.total_gold
-	_token_lbl.text = "JETON  %d" % manager.tokens
-	_best_lbl.text = "Rekor: %d m" % int(manager.best_m)
+	_gold_lbl.text = tr("ALTIN  %d") % manager.total_gold
+	_token_lbl.text = tr("JETON  %d") % manager.tokens
+	_best_lbl.text = tr("Rekor: %d m") % int(manager.best_m)
 	_continue.text = manager.saved_run_label()
 	_continue.visible = manager.has_saved_run() and not _panel.visible
 	for id in _tab_btns:
@@ -315,7 +318,7 @@ func refresh() -> void:
 	for c in _content.get_children():
 		c.queue_free()
 	if _map_btn:
-		_map_btn.text = "HARİTA\n%s" % String(TerrainGen.MAPS[manager.map_id]["name"])
+		_map_btn.text = tr("HARİTA\n%s") % tr(String(TerrainGen.MAPS[manager.map_id]["name"]))
 	match tab:
 		"maps":
 			_build_maps()
@@ -325,6 +328,9 @@ func refresh() -> void:
 			_build_upgrades()
 		"shop":
 			_build_shop()
+	if _panel_sb != null:
+		_panel_sb.bg_color = Lang.panel_color(0.92)
+	Lang.paint_texts.call_deferred(_content)
 
 
 # ---------------- KAMYONLAR ----------------
@@ -363,7 +369,7 @@ func _build_trucks() -> void:
 		if String(d.get("kind", "truck")) == "tir":
 			drive_txt = "Dorseli çekici • parça başı ücret %65"
 		elif String(d.get("kind", "truck")) == "bus":
-			drive_txt = "Otobüs • %d koltuk" % seats_of(d)
+			drive_txt = tr("Otobüs • %d koltuk") % seats_of(d)
 		elif (d.get("axles", []) as Array).size() == 3 and drv == "rwd":
 			drive_txt = "Çekiş: 6x4 (iki arka aks)"
 		_lbl(info, drive_txt, 14, Color(1.0, 0.8, 0.4))
@@ -389,7 +395,7 @@ func _build_trucks() -> void:
 			manager._style_btn(b, Color(0.2, 0.45, 0.8))
 			b.pressed.connect(func() -> void: manager.select_truck(id))
 		else:
-			b.text = "SATIN AL\n%d jeton" % int(d["price"])
+			b.text = tr("SATIN AL\n%d jeton") % int(d["price"])
 			manager._style_btn(b, Color(0.1, 0.55, 0.7) if manager.tokens >= int(d["price"]) else Color(0.3, 0.32, 0.38))
 			b.pressed.connect(func() -> void: manager.buy_truck(id))
 		h.add_child(b)
@@ -459,7 +465,7 @@ func _build_maps() -> void:
 		ds.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		ds.custom_minimum_size = Vector2(240, 0)
 		var g: float = float(md["gravity"])
-		var extra: String = "Yer çekimi: %%%d" % int(g * 100.0)
+		var extra: String = tr("Yer çekimi: %%%d") % int(g * 100.0)
 		_lbl(info, extra, 14, Color(1.0, 0.8, 0.4))
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(150, 64)
@@ -475,7 +481,7 @@ func _build_maps() -> void:
 			b.pressed.connect(func() -> void: manager.select_map(mid))
 		else:
 			var price: int = manager.map_price(mid)
-			b.text = "AÇ\n%d jeton" % price
+			b.text = tr("AÇ\n%d jeton") % price
 			manager._style_btn(b, Color(0.1, 0.55, 0.7) if manager.tokens >= price else Color(0.3, 0.32, 0.38))
 			b.pressed.connect(func() -> void: manager.buy_map(mid))
 		h.add_child(b)
@@ -484,7 +490,7 @@ func _build_maps() -> void:
 # ---------------- GELİŞTİRME ----------------
 func _build_upgrades() -> void:
 	var d: Dictionary = TruckCatalog.by_id(manager.selected)
-	_lbl(_content, "Kamyon: %s" % d["name"], 26, Color.WHITE)
+	_lbl(_content, tr("Kamyon: %s") % tr(d["name"]), 26, Color.WHITE)
 	if manager.active_vehicle() != manager.selected:
 		_lbl(_content, "(Otobüs Hattı'nda otobüs sürülür; geliştirmeler seçili kamyona uygulanır)", 15, Color(1.0, 0.8, 0.4))
 	var lv: Dictionary = manager.levels_of(manager.selected)
@@ -513,7 +519,7 @@ func _build_upgrades() -> void:
 			manager._style_btn(b, Color(0.3, 0.32, 0.38))
 		else:
 			var cost: int = manager.upgrade_cost(manager.selected, uid)
-			b.text = "YÜKSELT\n%d altın" % cost
+			b.text = tr("YÜKSELT\n%d altın") % cost
 			manager._style_btn(b, Color(0.8, 0.55, 0.1) if manager.total_gold >= cost else Color(0.3, 0.32, 0.38))
 			b.pressed.connect(func() -> void: manager.buy_upgrade(uid))
 		h.add_child(b)
@@ -542,7 +548,7 @@ func _build_shop() -> void:
 
 	_lbl(_content, "Ücretsiz jeton", 22, C_TOKEN)
 	var ad := Button.new()
-	ad.text = "▶  Reklam izle:  +%d jeton" % manager.REWARDED_TOKENS
+	ad.text = tr("▶  Reklam izle:  +%d jeton") % manager.REWARDED_TOKENS
 	ad.custom_minimum_size = Vector2(0, 66)
 	ad.add_theme_font_size_override("font_size", 26)
 	manager._style_btn(ad, Color(0.1, 0.55, 0.7))
@@ -555,7 +561,7 @@ func _build_shop() -> void:
 		var card := _card(Color(0, 0, 0, 0))
 		var h := HBoxContainer.new()
 		card.add_child(h)
-		var l := _lbl(h, "%s\n%d jeton" % [pack["name"], int(pack["tokens"])], 22, Color.WHITE)
+		var l := _lbl(h, tr("%s\n%d jeton") % [tr(pack["name"]), int(pack["tokens"])], 22, Color.WHITE)
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var b := Button.new()
 		b.text = "TEST AL" if manager.ads.test_mode else String(pack["price"])
@@ -571,7 +577,7 @@ func _card(border: Color) -> PanelContainer:
 	var p := PanelContainer.new()
 	p.mouse_filter = Control.MOUSE_FILTER_PASS
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = C_CARD
+	sb.bg_color = Lang.card_color()
 	sb.set_corner_radius_all(14)
 	sb.border_color = border
 	sb.set_border_width_all(3 if border.a > 0.0 else 0)

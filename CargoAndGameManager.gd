@@ -168,8 +168,9 @@ class Pedal extends Control:
 		draw_colored_polygon(tri, Color(1, 1, 1, 0.95))
 		var f: Font = ThemeDB.fallback_font
 		var fs: int = int(30.0 * k)
-		var ts: Vector2 = f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-		draw_string(f, Vector2((size.x - ts.x) * 0.5, size.y - 30.0 * k), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+		var tt: String = tr(text)
+		var ts: Vector2 = f.get_string_size(tt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+		draw_string(f, Vector2((size.x - ts.x) * 0.5, size.y - 30.0 * k), tt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
 
 
 ## Ayarlar çarkı (kodla çizilir)
@@ -208,7 +209,7 @@ class TurboButton extends Control:
 		draw_circle(c, r, bg)
 		draw_arc(c, r + 2.0, -PI * 0.5, -PI * 0.5 + TAU * charge, 48, Color(1.0, 0.85, 0.2), 6.0)
 		var f: Font = ThemeDB.fallback_font
-		var t: String = "TURBO"
+		var t: String = tr("TURBO")
 		var ts: Vector2 = f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
 		draw_string(f, c + Vector2(-ts.x * 0.5, 8), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE if (ready_ or active) else Color(0.7, 0.72, 0.78))
 		# alev simgesi
@@ -262,9 +263,10 @@ class Gauge extends Control:
 				var a2: float = _ang(v + max_v / float(major) * 0.5)
 				var d2 := Vector2(cos(a2), sin(a2))
 				draw_line(c + d2 * (r - 10.0 * k), c + d2 * (r - 4.0 * k), Color(1, 1, 1, 0.6), 2.0 * k)
-		var ts2: Vector2 = f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, f14)
+		var tl: String = tr(title)
+		var ts2: Vector2 = f.get_string_size(tl, HORIZONTAL_ALIGNMENT_LEFT, -1, f14)
 		var ty: float = r * 0.42 if unit != "" else -r * 0.3   # hararette yazı ortanın üstünde (S/H ile çakışmasın)
-		draw_string(f, c + Vector2(-ts2.x * 0.5, ty), title, HORIZONTAL_ALIGNMENT_LEFT, -1, f14, Color(1.0, 0.75, 0.3))
+		draw_string(f, c + Vector2(-ts2.x * 0.5, ty), tl, HORIZONTAL_ALIGNMENT_LEFT, -1, f14, Color(1.0, 0.75, 0.3))
 		if unit != "":
 			var val: String = "%d %s" % [int(round(value)), unit]
 			var ts3: Vector2 = f.get_string_size(val, HORIZONTAL_ALIGNMENT_LEFT, -1, f20)
@@ -310,7 +312,7 @@ func _ready() -> void:
 			_play_intro()
 	if _gold_fixed:
 		_save()
-		_toast("Eski sürümdeki hata yüzünden fazladan yazılan altın düzeltildi: %d altın" % total_gold, 5.0)
+		_toast(tr("Eski sürümdeki hata yüzünden fazladan yazılan altın düzeltildi: %d altın") % total_gold, 5.0)
 
 
 ## Açılış animasyonu: simgedeki sahne (gece, yokuş, sandıklı kamyon) belirir; kamyon tozlu yolda
@@ -556,6 +558,13 @@ func _notification(what: int) -> void:
 			return
 		if rescue_panel != null:
 			return
+		if help_panel != null:
+			help_panel.queue_free()
+			help_panel = null
+			return
+		if settings_panel != null:
+			_close_settings()
+			return
 		if state == "play" and pause_panel == null:
 			pause_game()
 		elif pause_panel != null:
@@ -563,7 +572,7 @@ func _notification(what: int) -> void:
 		elif state == "over":
 			_to_garage()
 		else:
-			get_tree().quit()
+			confirm_quit()
 
 
 # ======================= KALDIĞI YERDEN DEVAM =======================
@@ -577,7 +586,7 @@ func saved_run_label() -> String:
 	if not has_saved_run():
 		return ""
 	var cp: int = int(_saved_run["cp"])
-	return "▶  DEVAM ET  •  Bölge %d (%d m)" % [cp, int((cp - 1) * terrain.checkpoint_interval_m)]
+	return tr("▶  DEVAM ET  •  Bölge %d (%d m)") % [cp, int((cp - 1) * terrain.checkpoint_interval_m)]
 
 
 func _save_run() -> void:
@@ -618,7 +627,7 @@ func resume_run() -> void:
 		menu.close_panel()
 	start_game()
 	_enter_station()   # son istasyonda: yükünü seç, yola çık
-	_toast("Kaldığın yerden devam: Bölge %d - yükünü seç" % cp, 2.5)
+	_toast(tr("Kaldığın yerden devam: Bölge %d - yükünü seç") % cp, 2.5)
 
 
 func _truck_finite() -> bool:
@@ -807,7 +816,7 @@ func buy_map(id: String) -> void:
 		return
 	var price: int = map_price(id)
 	if tokens < price:
-		_toast("Yeterli jeton yok: %d gerekli" % price, 1.6)
+		_toast(tr("Yeterli jeton yok: %d gerekli") % price, 1.6)
 		return
 	var ok := func() -> void:
 		tokens -= price
@@ -815,7 +824,7 @@ func buy_map(id: String) -> void:
 		_save()
 		select_map(id)
 		snd.sfx("satin_al")
-		_toast("%s açıldı!" % String(TerrainGen.MAPS[id]["name"]), 2.0)
+		_toast(tr("%s açıldı!") % tr(String(TerrainGen.MAPS[id]["name"])), 2.0)
 	ads.show_interstitial(ok)
 
 
@@ -1127,7 +1136,8 @@ func _check_cargo(delta: float) -> void:
 			dropped.append(c)
 			c.lock_rotation = false   # düşen yolcu yuvarlanır
 			c.modulate = Color(1, 0.75, 0.75, 0.8)
-			_toast("%s düştü! %d/%d" % [CargoTypes.TYPES[String(c.get_meta("tur", "sandik"))]["name"], cargo.size(), cargo_total], 1.3)
+			_toast(tr("%s düştü! %d/%d") % [tr(CargoTypes.TYPES[String(c.get_meta("tur", "sandik"))]["name"]), cargo.size(), cargo_total], 1.3)
+			show_tip("tip_drop")
 			snd.sfx("yuk_dustu", 0.0, 0.8)
 	# geride kalan düşmüş yükleri sil (bellek)
 	var bx: float = truck.body.global_position.x
@@ -1144,7 +1154,7 @@ func _leg_time(k: int) -> float:
 
 func zone_name(k: int) -> String:
 	var names: Array = MAP_ZONE_NAMES.get(map_id, ZONES)
-	return names[clampi(k - 1, 0, names.size() - 1)]
+	return tr(names[clampi(k - 1, 0, names.size() - 1)])
 
 
 func _check_checkpoint() -> void:
@@ -1182,11 +1192,12 @@ func _check_checkpoint() -> void:
 			c.queue_free()
 	cargo.clear()
 	_out_time.clear()
-	var what: String = "yolcu" if is_bus() else "sağlam yük"
-	var msg: String = "%s %d m!  %d %s  +%d altın (süre bonusu %d)\nYeni bölge: %s - yollar zorlaşıyor!" % ["OTOGAR" if is_bus() else "TESLİMAT", int(leg * terrain.checkpoint_interval_m), intact, what, reward, time_bonus, zone_name(next_cp)]
+	var what: String = tr("yolcu") if is_bus() else tr("sağlam yük")
+	var msg: String = tr("%s %d m!  %d %s  +%d altın (süre bonusu %d)\nYeni bölge: %s - yollar zorlaşıyor!") % [tr("OTOGAR") if is_bus() else tr("TESLİMAT"), int(leg * terrain.checkpoint_interval_m), intact, what, reward, time_bonus, zone_name(next_cp)]
 	if intact == cargo_total:
-		msg = "KUSURSUZ! " + msg
+		msg = tr("KUSURSUZ! ") + msg
 	_toast(msg, 3.0)
+	show_tip("tip_delivery")
 	snd.sfx("teslimat")
 	_save_run()      # kaldığı yerden devam için istasyonda kayıt
 	_enter_station() # kamyon durur, yeni yükü oyuncu seçer
@@ -1340,9 +1351,10 @@ func open_station() -> void:
 		return   # önce araç dursun
 	_click()
 	load_btn.visible = false
+	show_tip.call_deferred("tip_station")
 	var panel := PanelContainer.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.09, 0.11, 0.16, 0.95)
+	sb.bg_color = Lang.panel_color(0.95)
 	sb.set_corner_radius_all(20)
 	sb.border_color = Color(0.95, 0.6, 0.15)
 	sb.set_border_width_all(3)
@@ -1376,8 +1388,8 @@ func open_station() -> void:
 		b.custom_minimum_size = Vector2(200, 84)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_size_override("font_size", 22)
-		var nm: String = String(CargoTypes.TYPES[kind]["name"])
-		b.text = "%s\n+%d altın" % [nm, cargo_price(kind, next_cp)]
+		var nm: String = tr(String(CargoTypes.TYPES[kind]["name"]))
+		b.text = tr("%s\n+%d altın") % [nm, cargo_price(kind, next_cp)]
 		b.set_meta("tur", kind)
 		_style_btn(b, Color(0.2, 0.42, 0.7))
 		b.pressed.connect(station_add.bind(kind))
@@ -1453,9 +1465,9 @@ func _station_refresh() -> void:
 		return
 	var n: int = _station_kinds.size()
 	if n == 0:
-		_station_info.text = "Yüklemek için yüke dokun. Hepsi sağlam giderse +%d bonus!" % perfect_bonus
+		_station_info.text = tr("Yüklemek için yüke dokun. Hepsi sağlam giderse +%d bonus!") % perfect_bonus
 	else:
-		_station_info.text = "%s %d %s  •  Teslimde: +%d altın  (+istasyon ve süre bonusu)" % ["Otobüste" if is_bus() else "Kasada", n, "yolcu" if is_bus() else "yük", station_value()]
+		_station_info.text = tr("%s %d %s  •  Teslimde: +%d altın  (+istasyon ve süre bonusu)") % [tr("Otobüste") if is_bus() else tr("Kasada"), n, tr("yolcu") if is_bus() else tr("yük"), station_value()]
 	var any_fit: bool = false
 	for b in _station_items:
 		var next: Array = _station_kinds.duplicate()
@@ -1463,7 +1475,7 @@ func _station_refresh() -> void:
 		b.disabled = not station_fits(next)
 		any_fit = any_fit or not b.disabled
 	if n > 0 and not any_fit:
-		_station_info.text = ("OTOBÜS DOLU" if is_bus() else "KASA DOLU") + "  •  %d yük  •  Teslimde: +%d altın  (+bonus)" % [n, station_value()]
+		_station_info.text = ("OTOBÜS DOLU" if is_bus() else "KASA DOLU") + tr("  •  %d yük  •  Teslimde: +%d altın  (+bonus)") % [n, station_value()]
 	_station_go.disabled = n == 0
 
 
@@ -1482,7 +1494,14 @@ func leave_station() -> void:
 	time_left = _leg_time(next_cp)
 	_stuck_ref_x = truck.body.global_position.x
 	_stuck_t = 0.0
-	_toast("Yola çık! %d yük, teslimde +%d altın" % [_station_kinds.size(), station_value()], 2.0)
+	_toast(tr("Yola çık! %d yük, teslimde +%d altın") % [_station_kinds.size(), station_value()], 2.0)
+	if tip_panel != null:
+		tip_panel.queue_free()
+		tip_panel = null
+	if Lang.tip_wanted("tip_pedals"):
+		show_tip("tip_pedals")
+	elif Lang.tip_wanted("tip_tilt"):
+		show_tip("tip_tilt")
 
 
 ## Testler ve hızlı yükleme için: bölgenin standart yükünü koy ve yola çık
@@ -1510,7 +1529,7 @@ func _check_game_over(delta: float) -> void:
 			if flip_rescues < MAX_RESCUES:
 				_offer_rescue("flip")
 			else:
-				_end("ŞASİ HASARI", "Kamyon ters döndü ve %d saniye öyle kaldı." % int(flip_time_limit))
+				_end("ŞASİ HASARI", tr("Kamyon ters döndü ve %d saniye öyle kaldı.") % int(flip_time_limit))
 			return
 	else:
 		flip_t = 0.0
@@ -1529,9 +1548,9 @@ func _check_game_over(delta: float) -> void:
 
 	if load_count() == 0:
 		if is_bus():
-			_end("TÜM YOLCULAR DÜŞTÜ", "Otobüste hiç yolcu kalmadı (0/%d)." % cargo_total)
+			_end("TÜM YOLCULAR DÜŞTÜ", tr("Otobüste hiç yolcu kalmadı (0/%d).") % cargo_total)
 		else:
-			_end("TÜM YÜKLER DÖKÜLDÜ", "Kasada hiç yük kalmadı (0/%d)." % cargo_total)
+			_end("TÜM YÜKLER DÖKÜLDÜ", tr("Kasada hiç yük kalmadı (0/%d).") % cargo_total)
 		return
 
 	# kamyon zeminin altına düştüyse (fizik hatası) oyun bitmez: son sağlam yere geri konur
@@ -1570,7 +1589,7 @@ func _offer_rescue(kind: String) -> void:
 	dim.add_child(center)
 	var panel := PanelContainer.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.09, 0.11, 0.16, 0.97)
+	sb.bg_color = Lang.panel_color(0.97)
 	sb.set_corner_radius_all(22)
 	sb.border_color = Color(0.95, 0.6, 0.15)
 	sb.set_border_width_all(3)
@@ -1594,10 +1613,10 @@ func _offer_rescue(kind: String) -> void:
 		var total: float = 0.0
 		for i in range(fuel_ads + 1):
 			total += float(FUEL_AD_STEPS[i])
-		info = "Reklam izle, depoya %%%d yakıt koyalım.\n3 reklamda depo yarıya kadar dolar (%d/3)." % [int(add * 100.0), fuel_ads + 1]
-		btn_text = "▶  Reklam izle: +%%%d yakıt" % int(add * 100.0)
+		info = tr("Reklam izle, depoya %%%d yakıt koyalım.\n3 reklamda depo yarıya kadar dolar (%d/3).") % [int(add * 100.0), fuel_ads + 1]
+		btn_text = tr("▶  Reklam izle: +%%%d yakıt") % int(add * 100.0)
 	else:
-		info = "Reklam izle, kamyonu düzeltip yola devam et.\n(%d/%d)" % [flip_rescues + 1, MAX_RESCUES]
+		info = tr("Reklam izle, kamyonu düzeltip yola devam et.\n(%d/%d)") % [flip_rescues + 1, MAX_RESCUES]
 		btn_text = "▶  Reklam izle: kamyonu düzelt"
 	var d := _label(v, info, 22)
 	d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1613,7 +1632,7 @@ func _offer_rescue(kind: String) -> void:
 		if kind == "fuel":
 			_end("YAKIT BİTTİ", "Depo boşaldı, kamyon yolda kaldı.")
 		else:
-			_end("ŞASİ HASARI", "Kamyon ters döndü ve %d saniye öyle kaldı." % int(flip_time_limit))
+			_end("ŞASİ HASARI", tr("Kamyon ters döndü ve %d saniye öyle kaldı.") % int(flip_time_limit))
 	_menu_btn(v, "Hayır, oyunu bitir", Color(0.35, 0.37, 0.45), give_up)
 
 
@@ -1714,7 +1733,7 @@ func pause_game() -> void:
 	dim.add_child(center)
 	var panel := PanelContainer.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.09, 0.11, 0.16, 0.97)
+	sb.bg_color = Lang.panel_color(0.97)
 	sb.set_corner_radius_all(22)
 	sb.border_color = Color(0.95, 0.6, 0.15)
 	sb.set_border_width_all(3)
@@ -1788,7 +1807,7 @@ func add_settings_toggles(parent: Control) -> void:
 		var label: String = it[0]
 		var paint := func() -> void:
 			var on: bool = music_on if key == "music" else sfx_on
-			b.text = "%s: %s" % [label, "AÇIK" if on else "KAPALI"]
+			b.text = "%s: %s" % [tr(label), tr("AÇIK") if on else tr("KAPALI")]
 			_style_btn(b, Color(0.15, 0.55, 0.35) if on else Color(0.3, 0.32, 0.38))
 		var flip := func() -> void:
 			match key:
@@ -2135,19 +2154,19 @@ func _update_hud(delta: float) -> void:
 	speed_gauge.set_value(absf(truck.speed_kmh()), delta)
 	heat_gauge.set_value(truck.heat, delta)
 	if is_bus():
-		cargo_lbl.text = "YOLCU %d/%d" % [cargo.size(), cargo_total]
+		cargo_lbl.text = tr("YOLCU %d/%d") % [cargo.size(), cargo_total]
 	else:
-		cargo_lbl.text = "YÜK %d/%d" % [cargo.size(), cargo_total]
+		cargo_lbl.text = tr("YÜK %d/%d") % [cargo.size(), cargo_total]
 	cargo_lbl.add_theme_color_override("font_color", Color.WHITE if load_count() > 2 else Color(1, 0.45, 0.35))
 	dist_lbl.text = "%d m" % int(_distance_m())
-	gold_lbl.text = "ALTIN %d" % gold_run
+	gold_lbl.text = tr("ALTIN %d") % gold_run
 	var to_next: float = (terrain.checkpoint_x(next_cp) - truck.body.global_position.x) / PX_PER_M
 	next_lbl.text = "%s: %d m" % ["OTOGAR" if is_bus() else "TESLİMAT", maxi(int(to_next), 0)]
 	var tl: int = maxi(int(ceil(time_left)), 0)
-	timer_lbl.text = "SÜRE %d:%02d" % [tl / 60, tl % 60]
+	timer_lbl.text = tr("SÜRE %d:%02d") % [tl / 60, tl % 60]
 	timer_lbl.add_theme_color_override("font_color", Color(1, 0.35, 0.3) if time_left < 15.0 else Color.WHITE)
 	var rk: String = terrain.road_at(truck.body.global_position.x)
-	zone_lbl.text = "Bölge %d: %s   •   %s" % [next_cp, zone_name(next_cp), terrain.ROADS[rk]["name"]]
+	zone_lbl.text = tr("Bölge %d: %s   •   %s") % [next_cp, zone_name(next_cp), tr(terrain.ROADS[rk]["name"])]
 	if rk != _last_road:
 		if _last_road != "":
 			var extra: String = ""
@@ -2157,7 +2176,7 @@ func _update_hud(delta: float) -> void:
 				extra = "\nDik yokuşlar başlıyor"
 			elif rk == "asfalt":
 				extra = "\nRahat yol, gaza bas"
-			_toast(String(terrain.ROADS[rk]["name"]) + extra, 1.8)
+			_toast(tr(String(terrain.ROADS[rk]["name"])) + tr(extra), 1.8)
 		_last_road = rk
 	turbo_btn.set_state(truck.turbo_charge, truck.turbo_active)
 
@@ -2166,14 +2185,17 @@ func _update_hud(delta: float) -> void:
 		warn = "MOTOR AŞIRI ISINDI! Güç kesildi..."
 	elif truck.heat > 80.0:
 		warn = "Hararet yüksek - gazı biraz bırak"
+		show_tip("tip_heat")
 	if flip_t > 0.0 and not game_over:
-		warn = "ŞASİ TEHLİKEDE! %.1f" % maxf(flip_time_limit - flip_t, 0.0)
+		warn = tr("ŞASİ TEHLİKEDE! %.1f") % maxf(flip_time_limit - flip_t, 0.0)
 	elif truck.fuel <= 0.0:
 		warn = "YAKIT BİTTİ!"
 	elif fuel_bar.value < 20.0:
 		warn = "Yakıt azaldı!"
+		if truck.fuel > 0.0:
+			show_tip("tip_fuel")
 	elif time_left < 15.0:
-		warn = "ACELE ET! Teslimata %d sn kaldı" % int(ceil(time_left))
+		warn = tr("ACELE ET! Teslimata %d sn kaldı") % int(ceil(time_left))
 	warn_lbl.text = warn
 	warn_lbl.visible = warn != "" and (fmod(Time.get_ticks_msec() / 1000.0, 0.7) < 0.5 or flip_t > 0.0)
 
@@ -2198,7 +2220,7 @@ func _show_game_over(title: String, detail: String, dist_m: float, dist_bonus: i
 	over_panel.add_child(center)
 	var panel := PanelContainer.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.09, 0.11, 0.16, 0.97)
+	sb.bg_color = Lang.panel_color(0.97)
 	sb.set_corner_radius_all(22)
 	sb.border_color = Color(0.95, 0.6, 0.15)
 	sb.set_border_width_all(3)
@@ -2217,13 +2239,13 @@ func _show_game_over(title: String, detail: String, dist_m: float, dist_bonus: i
 	t.add_theme_color_override("font_color", Color(1, 0.4, 0.3))
 	var d := _label(v, detail, 22)
 	d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var stats := "Mesafe: %d m%s   •   Teslim edilen yük: %d\nBu sefer: %d altın (mesafe bonusu %d)   •   Toplam altın: %d" % [
-		int(dist_m), "  (YENİ REKOR!)" if new_best else "", delivered, gold_run, dist_bonus, total_gold]
+	var stats := tr("Mesafe: %d m%s   •   Teslim edilen yük: %d\nBu sefer: %d altın (mesafe bonusu %d)   •   Toplam altın: %d") % [
+		int(dist_m), tr("  (YENİ REKOR!)") if new_best else "", delivered, gold_run, dist_bonus, total_gold]
 	var s := _label(v, stats, 22)
 	s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	var dbl := Button.new()
-	dbl.text = "Reklam izle: kazancı 2 katına çıkar (+%d altın)" % gold_run
+	dbl.text = tr("Reklam izle: kazancı 2 katına çıkar (+%d altın)") % gold_run
 	dbl.custom_minimum_size = Vector2(0, 58)
 	dbl.add_theme_font_size_override("font_size", 24)
 	dbl.disabled = gold_run <= 0
@@ -2236,8 +2258,8 @@ func _show_game_over(title: String, detail: String, dist_m: float, dist_bonus: i
 			total_gold += gold_run
 			_save()
 			dbl.disabled = true
-			dbl.text = "Kazanç ikiye katlandı! (+%d altın)" % gold_run
-			s.text = "Mesafe: %d m   •   Teslim edilen yük: %d\nBu sefer: %d altın   •   Toplam altın: %d" % [int(dist_m), delivered, gold_run * 2, total_gold]
+			dbl.text = tr("Kazanç ikiye katlandı! (+%d altın)") % gold_run
+			s.text = tr("Mesafe: %d m   •   Teslim edilen yük: %d\nBu sefer: %d altın   •   Toplam altın: %d") % [int(dist_m), delivered, gold_run * 2, total_gold]
 		ads.show_rewarded(reward)
 	dbl.pressed.connect(do_double)
 	v.add_child(dbl)
@@ -2264,7 +2286,7 @@ func make_gear_button(cb: Callable) -> Button:
 	g.flat = true
 	g.focus_mode = Control.FOCUS_NONE
 	g.custom_minimum_size = Vector2(76, 76)
-	g.tooltip_text = "Ayarlar"
+	g.tooltip_text = tr("Ayarlar")
 	g.pressed.connect(_click)
 	g.pressed.connect(cb)
 	return g
@@ -2284,7 +2306,7 @@ func open_settings() -> void:
 	dim.add_child(center)
 	var panel := PanelContainer.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.09, 0.11, 0.16, 0.97)
+	sb.bg_color = Lang.panel_color(0.97)
 	sb.set_corner_radius_all(22)
 	sb.border_color = Color(0.95, 0.6, 0.15)
 	sb.set_border_width_all(3)
@@ -2303,11 +2325,238 @@ func open_settings() -> void:
 	row.add_theme_constant_override("separation", 10)
 	v.add_child(row)
 	add_settings_toggles(row)
+	# dil seçimi
+	_label(v, "Dil", 22)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	v.add_child(grid)
+	for code in Lang.LangData.LANGS:
+		var lb := Button.new()
+		lb.text = Lang.LangData.NAMES[code]
+		lb.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		lb.custom_minimum_size = Vector2(150, 50)
+		lb.add_theme_font_size_override("font_size", 20)
+		_style_btn(lb, Color(0.95, 0.55, 0.1) if code == Lang.lang else Color(0.3, 0.32, 0.38))
+		var cd: String = code
+		lb.pressed.connect(func() -> void:
+			_click()
+			Lang.set_lang(cd)
+			_reopen_settings())
+		grid.add_child(lb)
+	# tema
+	_label(v, "Tema", 22)
+	var trow := HBoxContainer.new()
+	trow.add_theme_constant_override("separation", 8)
+	v.add_child(trow)
+	for th in [["system", "Sistem"], ["dark", "Koyu"], ["light", "Açık"]]:
+		var tb := Button.new()
+		tb.text = th[1]
+		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tb.custom_minimum_size = Vector2(0, 50)
+		tb.add_theme_font_size_override("font_size", 20)
+		_style_btn(tb, Color(0.95, 0.55, 0.1) if th[0] == Lang.theme else Color(0.3, 0.32, 0.38))
+		var tid: String = th[0]
+		tb.pressed.connect(func() -> void:
+			_click()
+			Lang.set_theme(tid)
+			_reopen_settings())
+		trow.add_child(tb)
+	_menu_btn(v, "NASIL OYNANIR", Color(0.15, 0.5, 0.75), func() -> void:
+		_click()
+		_close_settings()
+		open_help())
 	var close := func() -> void:
-		if settings_panel != null:
-			settings_panel.queue_free()
-			settings_panel = null
+		_close_settings()
 	_menu_btn(v, "KAPAT", Color(0.3, 0.32, 0.4), close)
+	Lang.paint_texts(panel)
+	_portrait_scale(panel)
+
+
+func _close_settings() -> void:
+	if settings_panel != null:
+		settings_panel.queue_free()
+		settings_panel = null
+
+
+func _reopen_settings() -> void:
+	_close_settings()
+	open_settings()
+
+
+## Yardım / sık sorulanlar
+var help_panel: Control
+
+func open_help() -> void:
+	if help_panel != null:
+		return
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.62)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.process_mode = Node.PROCESS_MODE_ALWAYS
+	ui.add_child(dim)
+	help_panel = dim
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.add_child(center)
+	var panel := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Lang.panel_color(0.97)
+	sb.set_corner_radius_all(22)
+	sb.border_color = Color(0.95, 0.6, 0.15)
+	sb.set_border_width_all(3)
+	sb.content_margin_left = 30
+	sb.content_margin_right = 30
+	sb.content_margin_top = 18
+	sb.content_margin_bottom = 20
+	panel.add_theme_stylebox_override("panel", sb)
+	var vs: Vector2 = get_viewport().get_visible_rect().size
+	panel.custom_minimum_size = Vector2(minf(900.0, vs.x - 40.0), minf(560.0, vs.y - 40.0))
+	center.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	panel.add_child(v)
+	var t := _label(v, "YARDIM / SSS", 34)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	v.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 6)
+	scroll.add_child(list)
+	for i in range(1, 7):
+		var q := _label(list, tr("faq_q%d" % i), 22)
+		q.add_theme_color_override("font_color", Color(1.0, 0.72, 0.25))
+		q.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var a := _label(list, tr("faq_a%d" % i), 18)
+		a.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		a.add_theme_constant_override("outline_size", 3)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	v.add_child(row)
+	var again := _menu_btn(row, "İpuçlarını tekrar göster", Color(0.15, 0.55, 0.35), func() -> void:
+		_click()
+		Lang.tips_reset()
+		_toast("İpuçları sıfırlandı. Yeni oyunda tekrar görünecek.", 2.4))
+	again.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	again.custom_minimum_size = Vector2(0, 58)
+	var cl := _menu_btn(row, "KAPAT", Color(0.3, 0.32, 0.4), func() -> void:
+		if help_panel != null:
+			help_panel.queue_free()
+			help_panel = null)
+	cl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cl.custom_minimum_size = Vector2(0, 58)
+	Lang.paint_texts(panel)
+
+
+## İlk kullanımda bağlamsal ipuçları: her biri bir kez, "Anladım" ya da "İpuçlarını kapat"
+var tip_panel: Control
+
+func show_tip(id: String) -> void:
+	if not Lang.tip_wanted(id) or tip_panel != null or ui == null:
+		return
+	for a in OS.get_cmdline_user_args():
+		if String(a).begins_with("--case"):
+			return
+	var panel := PanelContainer.new()
+	panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Lang.panel_color(0.96)
+	sb.set_corner_radius_all(18)
+	sb.border_color = Color(0.3, 0.75, 1.0)
+	sb.set_border_width_all(3)
+	sb.content_margin_left = 22
+	sb.content_margin_right = 22
+	sb.content_margin_top = 12
+	sb.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	var w: float = minf(820.0, get_viewport().get_visible_rect().size.x - 40.0)
+	panel.offset_left = -w * 0.5
+	panel.offset_right = w * 0.5
+	panel.offset_top = 96
+	ui.add_child(panel)
+	tip_panel = panel
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	panel.add_child(v)
+	var hd := _label(v, "İPUCU", 20)
+	hd.add_theme_color_override("font_color", Color(0.35, 0.8, 1.0))
+	var tx := _label(v, tr(id), 20)
+	tx.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tx.custom_minimum_size.x = w - 44.0
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	v.add_child(row)
+	var done := func() -> void:
+		Lang.tip_done(id)
+		if tip_panel != null:
+			tip_panel.queue_free()
+			tip_panel = null
+	var off := _menu_btn(row, "İPUÇLARINI KAPAT", Color(0.3, 0.32, 0.4), func() -> void:
+		Lang.tips_disable()
+		done.call())
+	off.custom_minimum_size = Vector2(0, 52)
+	off.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	off.add_theme_font_size_override("font_size", 20)
+	var ok := _menu_btn(row, "ANLADIM", Color(0.15, 0.6, 0.3), func() -> void:
+		_click()
+		done.call())
+	ok.custom_minimum_size = Vector2(0, 52)
+	ok.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ok.add_theme_font_size_override("font_size", 20)
+	Lang.paint_texts(panel)
+
+
+## Ana menüde geri tuşu: yanlışlıkla çıkmayı önlemek için onay
+var quit_panel: Control
+
+func confirm_quit() -> void:
+	if quit_panel != null:
+		quit_panel.queue_free()
+		quit_panel = null
+		return
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.62)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ui.add_child(dim)
+	quit_panel = dim
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.add_child(center)
+	var panel := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Lang.panel_color(0.97)
+	sb.set_corner_radius_all(22)
+	sb.border_color = Color(0.95, 0.6, 0.15)
+	sb.set_border_width_all(3)
+	sb.content_margin_left = 34
+	sb.content_margin_right = 34
+	sb.content_margin_top = 20
+	sb.content_margin_bottom = 22
+	panel.add_theme_stylebox_override("panel", sb)
+	center.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 14)
+	panel.add_child(v)
+	var t := _label(v, "Çıkmak istiyor musun?", 32)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	v.add_child(row)
+	var stay := _menu_btn(row, "KAL", Color(0.15, 0.6, 0.3), func() -> void:
+		if quit_panel != null:
+			quit_panel.queue_free()
+			quit_panel = null)
+	stay.custom_minimum_size = Vector2(220, 62)
+	var q := _menu_btn(row, "ÇIK", Color(0.75, 0.2, 0.2), func() -> void:
+		_save()
+		get_tree().quit())
+	q.custom_minimum_size = Vector2(220, 62)
+	Lang.paint_texts(panel)
 	_portrait_scale(panel)
 
 
@@ -2384,7 +2633,7 @@ func buy_truck(id: String) -> void:
 		select_truck(id)
 		return
 	if tokens < price:
-		_toast("Jetonun yetmiyor: %d / %d\nMağaza'dan jeton al ya da reklam izle" % [tokens, price], 2.5)
+		_toast(tr("Jetonun yetmiyor: %d / %d\nMağaza'dan jeton al ya da reklam izle") % [tokens, price], 2.5)
 		return
 	var buy := func() -> void:
 		if tokens < price or owned.has(id):
@@ -2393,7 +2642,7 @@ func buy_truck(id: String) -> void:
 		owned.append(id)
 		_save()
 		select_truck(id)
-		_toast("%s artık senin!" % def["name"], 2.5)
+		_toast(tr("%s artık senin!") % tr(def["name"]), 2.5)
 		snd.sfx("satin_al")
 	ads.show_interstitial(buy)
 
@@ -2415,7 +2664,7 @@ func buy_upgrade(up_id: String) -> void:
 		return
 	var cost: int = upgrade_cost(selected, up_id)
 	if total_gold < cost:
-		_toast("Altının yetmiyor: %d / %d" % [total_gold, cost], 2.0)
+		_toast(tr("Altının yetmiyor: %d / %d") % [total_gold, cost], 2.0)
 		return
 	var buy := func() -> void:
 		if total_gold < cost:
@@ -2426,7 +2675,7 @@ func buy_upgrade(up_id: String) -> void:
 		_build_truck()
 		if menu:
 			menu.refresh()
-		_toast("Yükseltildi! Seviye %d" % (lvl + 1), 1.8)
+		_toast(tr("Yükseltildi! Seviye %d") % (lvl + 1), 1.8)
 		snd.sfx("satin_al")
 	ads.show_interstitial(buy)
 
@@ -2436,7 +2685,7 @@ func convert_gold(steps: int) -> void:
 	var max_steps: int = total_gold / GOLD_PER_TOKEN_STEP
 	var n: int = max_steps if steps < 0 else steps
 	if n <= 0 or n > max_steps:
-		_toast("En az %d altın gerekli" % (GOLD_PER_TOKEN_STEP * maxi(n, 1)), 2.0)
+		_toast(tr("En az %d altın gerekli") % (GOLD_PER_TOKEN_STEP * maxi(n, 1)), 2.0)
 		return
 	var conv := func() -> void:
 		if total_gold < n * GOLD_PER_TOKEN_STEP:
@@ -2446,7 +2695,7 @@ func convert_gold(steps: int) -> void:
 		_save()
 		if menu:
 			menu.refresh()
-		_toast("%d altın → %d jeton" % [n * GOLD_PER_TOKEN_STEP, n * TOKENS_PER_STEP], 2.0)
+		_toast(tr("%d altın → %d jeton") % [n * GOLD_PER_TOKEN_STEP, n * TOKENS_PER_STEP], 2.0)
 		snd.sfx("satin_al")
 	ads.show_interstitial(conv)
 
@@ -2457,7 +2706,7 @@ func watch_ad_for_tokens() -> void:
 		_save()
 		if menu:
 			menu.refresh()
-		_toast("+%d jeton!" % REWARDED_TOKENS, 2.0)
+		_toast(tr("+%d jeton!") % REWARDED_TOKENS, 2.0)
 		snd.sfx("satin_al")
 	ads.show_rewarded(reward)
 
@@ -2468,7 +2717,7 @@ func buy_pack(pack: Dictionary) -> void:
 		_save()
 		if menu:
 			menu.refresh()
-		_toast("+%d jeton eklendi" % int(pack["tokens"]), 2.0)
+		_toast(tr("+%d jeton eklendi") % int(pack["tokens"]), 2.0)
 		snd.sfx("satin_al")
 	ads.buy_pack(pack, ok)
 
